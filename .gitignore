@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.DS_Store
+
+# local runtime state (never commit the news cache)
+/cache/
+*.local.toml
+
+# secrets — API keys live here, never in git
+.env
+.env.local

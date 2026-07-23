@@ -1,0 +1,191 @@
+# spindle configuration — copy to one of:
+#   $SPINDLE_CONFIG                      (explicit override)
+#   ~/.config/spindle/config.toml        (default location)
+#
+# Every key is optional; anything omitted falls back to the built-in default.
+# The tool works with no config file at all.
+
+# ── Acquisition mode ───────────────────────────────────────────────────────
+# "scraper" → RSS/Atom + Hacker News + Reddit   (no keys needed)
+# "api"     → NewsAPI + GNews + DEV.to + Hacker News
+# The two are mutually exclusive. Override once with `spindle --mode api refresh`.
+mode = "scraper"
+
+# ── Cache & rendering ──────────────────────────────────────────────────────
+ttl_minutes      = 30       # cache is "stale" after this; triggers a background refresh
+max_stories      = 60       # cap on stories kept in the cache
+max_age_hours    = 72       # drop stories older than this
+history_size     = 800      # how many shown-story ids to remember (rotation)
+pool_size        = 14       # verbs placed into settings per session
+max_title_width  = 56       # display columns budget for the whole verb (prefix + title)
+display_separator = " • "   # between prefix and title, e.g. "IOS • SwiftUI …"
+
+# ── Networking ─────────────────────────────────────────────────────────────
+request_timeout_secs = 8.0
+max_feed_bytes       = 5000000
+user_agent           = "spindle/0.1 (+https://github.com/izhanali/spindle-claude-code)"
+
+# ── Locations ──────────────────────────────────────────────────────────────
+# cache_dir            = "~/.cache/spindle"
+claude_settings_path = "~/.claude/settings.json"
+manage_hook          = true   # set false to manage the SessionStart hook yourself
+
+# ── AI headline summarizer (optional) ───────────────────────────────────────
+# A cheap chat model rewrites each headline into a short spinner label so it no
+# longer truncates mid-title. Runs only during `refresh`, one batched request,
+# and caches the result — a story is summarized once, never at render time.
+#
+# ACTIVE ONLY WHEN A KEY IS PRESENT. Put the key here, or (preferred) keep it
+# out of files by exporting it / storing it in a .env file next to this config:
+#   OPENAI_API_KEY="sk-..."        # see .env.example
+# No key → this whole layer is a silent no-op (no calls, no cost). Set
+# `enabled = false` to turn it off even when a key is exported.
+[ai]
+enabled      = true
+api_key      = ""                         # or $OPENAI_API_KEY
+base_url     = "https://api.openai.com/v1"
+model        = "gpt-4o-mini"              # any cheap chat model
+max_words    = 24                         # target length of each label
+max_items    = 40                         # headlines summarized per refresh (cost guard)
+timeout_secs = 20.0
+
+# ── Topics (used for relevance scoring) ─────────────────────────────────────
+topics = [
+  "Mobile", "iOS", "Android", "Swift", "SwiftUI", "Kotlin",
+  "Jetpack Compose", "Flutter", "React Native", "Expo",
+  "App Store", "Play Store",
+  "AI", "LLMs", "Programming", "Open Source", "DevOps",
+  "Python", "Java", "JavaScript", "Cloud", "Databases",
+]
+
+# ── Ranking: off-topic penalty ──────────────────────────────────────────────
+# Stories matching no developer/AI keyword (and not a release) are general-
+# interest noise in a dev-news tool — think front-page Hacker News chatter. Their
+# score is multiplied by this factor so freshness + popularity alone can't float
+# them into the spinner. 1.0 = no penalty; lower = harsher. 0.0 = effectively drop.
+offtopic_penalty = 0.35
+
+# ── Scoring weights ─────────────────────────────────────────────────────────
+[weights]
+freshness     = 1.0
+signal        = 1.0   # HN points / Reddit score (log-scaled)
+dev_relevance = 0.8   # mobile / programming keyword match
+ai_relevance  = 0.6   # AI / LLM keyword match
+release       = 0.6   # SDK / framework release & changelog posts
+
+# ── Per-source weight (score multiplier, keyed by a story's `source`) ────────
+# A source not listed here is 1.0 (neutral). Raise one to make it lead the
+# ranking without silencing the rest. Sources: hackernews, reddit, rss (scraper
+# mode); newsapi, gnews, devto (api mode).
+[source_weights]
+devto = 2.0   # DEV.to leads the ranking
+
+# ── Hacker News (front page via Algolia, no auth) ───────────────────────────
+[hackernews]
+enabled    = true
+prefix     = "HN"
+min_points = 80
+limit      = 30
+
+# ── Reddit (public hot.json, no auth) ───────────────────────────────────────
+[reddit]
+enabled    = true
+prefix     = "RDT"
+min_score  = 100
+limit      = 20
+subreddits = [
+  "androiddev", "iOSProgramming", "reactnative", "FlutterDev",
+  "Kotlin", "swift",
+  "programming", "javascript", "MachineLearning", "LocalLLaMA",
+]
+
+# ════════════════════════════════════════════════════════════════════════════
+#  API MODE SOURCES  (used only when mode = "api")
+# ════════════════════════════════════════════════════════════════════════════
+# API keys: put them here OR (preferred, keeps secrets out of files) export
+#   export NEWSAPI_KEY="..."      # https://newsapi.org/register
+#   export GNEWS_KEY="..."        # https://gnews.io/  (free tier: 90 req/day)
+# A keyed source with no key is simply skipped, so api mode still works on
+# DEV.to + Hacker News alone. `daily_limit` is enforced — we never exceed it.
+
+# `query` left empty is built automatically from `[topics]` (priority-ordered,
+# OR-joined, quoted phrases, capped to each API's limit — GNews 200 / NewsAPI
+# 500 chars). Set an explicit string to override and search exactly that.
+[newsapi]
+enabled     = true
+prefix      = "NEWS"
+api_key     = ""                 # or $NEWSAPI_KEY
+query       = ""                 # empty → derived from [topics]
+language    = "en"
+page_size   = 30
+daily_limit = 100                # NewsAPI free tier
+
+[gnews]
+enabled     = true
+prefix      = "GNEWS"
+api_key     = ""                 # or $GNEWS_KEY
+query       = ""                 # empty → derived from [topics]
+lang        = "en"
+max         = 10                 # free tier: max 10 articles/request
+daily_limit = 90                 # GNews free tier: 90 requests/day
+
+[devto]
+enabled       = true
+prefix        = "DEV"
+min_reactions = 10
+per_page      = 15
+top_days      = 7                # top articles of the last N days
+tags          = ["android", "ios", "flutter", "reactnative", "kotlin", "swift", "ai", "programming"]
+
+# ── RSS / Atom feeds  (used only when mode = "scraper") ─────────────────────
+# Each entry: prefix (display tag) + url. Add/remove freely; dead feeds are
+# skipped automatically. Optional `topic` biases relevance.
+
+# Mobile app development
+[[rss]]
+prefix = "AND"
+url    = "https://android-developers.googleblog.com/feeds/posts/default"
+[[rss]]
+prefix = "IOS"
+url    = "https://developer.apple.com/news/rss/news.rss"
+[[rss]]
+prefix = "SWIFT"
+url    = "https://www.swift.org/atom.xml"
+[[rss]]
+prefix = "KOTLIN"
+url    = "https://blog.jetbrains.com/kotlin/feed/"
+[[rss]]
+prefix = "RN"
+url    = "https://reactnative.dev/blog/rss.xml"
+[[rss]]
+prefix = "FLUTTER"
+url    = "https://medium.com/feed/flutter"
+[[rss]]
+prefix = "EXPO"
+url    = "https://expo.dev/changelog/rss.xml"
+
+# Broader developer landscape
+[[rss]]
+prefix = "AI"
+url    = "https://simonwillison.net/atom/everything/"
+[[rss]]
+prefix = "AI"
+url    = "https://huggingface.co/blog/feed.xml"
+[[rss]]
+prefix = "AI"
+url    = "https://openai.com/news/rss.xml"
+[[rss]]
+prefix = "PY"
+url    = "https://realpython.com/atom.xml"
+[[rss]]
+prefix = "DEV"
+url    = "https://martinfowler.com/feed.atom"
+[[rss]]
+prefix = "DEVOPS"
+url    = "https://kubernetes.io/feed.xml"
+[[rss]]
+prefix = "CLOUD"
+url    = "https://aws.amazon.com/about-aws/whats-new/recent/feed/"
+[[rss]]
+prefix = "DB"
+url    = "https://www.postgresql.org/news.rss"

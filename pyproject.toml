@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spindle-news"
+version = "0.1.0"
+description = "Developer news in the Claude Code thinking spinner, via the official spinnerVerbs hook. Zero render-time cost, standard-library only."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+keywords = ["claude-code", "news", "rss", "cli", "spinner", "mobile"]
+dependencies = []           # standard library only
+
+[project.scripts]
+spindle = "spindle.__main__:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
