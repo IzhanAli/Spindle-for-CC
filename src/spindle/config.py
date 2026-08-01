@@ -165,7 +165,7 @@ class Config:
     max_age_hours: int = 72        # stories older than this are dropped from cache
     history_size: int = 800
     pool_size: int = 14            # how many verbs are placed for a session
-    max_title_width: int = 56      # display columns budget for the whole verb
+    max_title_width: int = 90      # display columns budget for the whole verb
     display_separator: str = " • "
 
     # networking

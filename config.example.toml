@@ -17,7 +17,7 @@ max_stories      = 60       # cap on stories kept in the cache
 max_age_hours    = 72       # drop stories older than this
 history_size     = 800      # how many shown-story ids to remember (rotation)
 pool_size        = 14       # verbs placed into settings per session
-max_title_width  = 56       # display columns budget for the whole verb (prefix + title)
+max_title_width  = 90       # display columns budget for the whole verb (prefix + title)
 display_separator = " • "   # between prefix and title, e.g. "IOS • SwiftUI …"
 
 # ── Networking ─────────────────────────────────────────────────────────────

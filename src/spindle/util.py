@@ -92,6 +92,11 @@ def display_width(text: str) -> int:
 def truncate_width(text: str, max_width: int) -> str:
     """Truncate ``text`` to fit ``max_width`` terminal columns.
 
+    Breaks on a word boundary when possible, so a headline never ends mid-word
+    (e.g. "...Submit Butto" for "...Submit Button") — unless that would throw
+    away more than half the budget, in which case a hard cut beats an
+    over-short fragment.
+
     No ellipsis is appended: Claude Code renders a trailing "…" after every
     spinner verb, and that "…" doubles as our truncation indicator — matching
     the desired output exactly (e.g. "AI • Anthropic releases MCP v2…").
@@ -102,13 +107,20 @@ def truncate_width(text: str, max_width: int) -> str:
         return text
     out = []
     width = 0
-    for ch in text:
+    cut_index = len(text)
+    for i, ch in enumerate(text):
         w = char_width(ch)
         if width + w > max_width:
+            cut_index = i
             break
         out.append(ch)
         width += w
-    return "".join(out).rstrip()
+    truncated = "".join(out)
+    if text[cut_index] != " ":
+        last_space = truncated.rfind(" ")
+        if last_space > max_width // 2:
+            truncated = truncated[:last_space]
+    return truncated.rstrip()
 
 
 # --------------------------------------------------------------------------- #
