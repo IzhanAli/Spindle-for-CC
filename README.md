@@ -1,10 +1,8 @@
-# spindle for Claude Code
+# spindle for Claude Code CLI
 
-**A tiny toy that turns Claude Code's "thinking" spinner into a live developer-news ticker.**
+**A tiny tool that turns Claude Code's "thinking" spinner into a live developer-news ticker.**
 
 ![spindle showing a developer-news headline in the Claude Code thinking spinner](assets/spinner-preview.png)
-
-*A real spindle headline riding Claude Code's spinner — the timer, tokens, effort and colors are all Claude's own.*
 
 You know the word Claude Code flashes while it thinks?
 
@@ -19,20 +17,16 @@ local cache:
 Apple ships Swift 6.2… (7m 33s · ↓ 27.2k tokens · thinking more with xhigh effort)
 ```
 
-Everything else on that line — the `…`, the timer, the token count, the colors —
-is still Claude's own output, untouched. spindle just hands it a better word.
-
-No ads, no telemetry, no background process eating your
-battery. The news sits in a local file, and **nothing of spindle's runs while
-Claude is actually thinking.** Pure Python, zero dependencies, nothing to build.
+No ads, no telemetry, no background process. The news sits in a local file, and **nothing of spindle's runs while
+Claude is actually thinking.** 
 
 ---
 
-## Get it running
+## Install it
 
-You'll need **Python 3.8+**, **Claude Code 2.1.143 or newer**, and **git**.
+Prerequisites: **Python 3.8+**, **Claude Code 2.1.143 or newer**, and **git**.
 
-Paste this into your terminal:
+Run:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/izhanali/spindle-claude-code/main/install.sh | bash
@@ -73,40 +67,9 @@ add to your shell profile.
 
 Here's the best part: **you don't have to do anything.** Just use Claude Code
 the way you always do. The next time it pauses to think, the spinner shows news
-instead of a random word. Start a new session and you get the next batch. That's
-the whole experience — set it and forget it.
+instead of a random word. Start a new session and you get the next batch. 
 
-Want to peek at the headlines it has queued up *right now*, without waiting for
-Claude to think?
-
-```bash
-spindle status
-```
-
-```
-mode            scraper
-stories cached  60
-last refresh    8m ago  (fresh)
-verbs in pool   14
-    Apple ships Swift 6.2…
-    React Native's New Architecture is now the default…
-    Kotlin 2.x lands a faster compiler…
-    …
-top stories:
-     3.48   DEV   Swift Classes — Four Ways Variables and Constants Combine
-     3.44   DEV   The Dirty Secret Behind AI Agents
-     …
-```
-
-Those verbs are exactly what your spinner will draw from this session.
-
-**To catch it live:** open Claude Code and ask it something meaty — a real
-refactor, or a "why is this slow?" — then watch the top-left spinner while it
-works. There's your news.
-
----
-
-## A handful of commands (optional)
+### A handful of commands (optional)
 
 You'll rarely need these — the startup hook keeps everything fresh on its own —
 but they're there when you want them:
@@ -116,7 +79,7 @@ but they're there when you want them:
 | `spindle status` | show what's cached and what's queued for the spinner |
 | `spindle refresh` | pull fresh news right now |
 | `spindle reset` | restart the rotation (make everything eligible again) |
-| `spindle uninstall` | remove spindle's keys from Claude's settings |
+| `spindle uninstall` | remove spindle completely |
 | `spindle version` | print the version |
 
 ---
@@ -148,8 +111,7 @@ No telemetry, ever. The only network it does is fetching public news feeds, and
 only during a refresh — never while Claude is thinking.
 
 **How do I turn it off?**
-`spindle uninstall`, then start a new session — you're back to the normal
-spinner. Full cleanup is in [Uninstall](#uninstall) at the bottom.
+`spindle uninstall`, then start a new session. 
 
 ---
 
@@ -255,20 +217,6 @@ Config discovery order: `--config PATH` → `$SPINDLE_CONFIG` →
 `$SPINDLE_HOME/config.toml` → `~/.config/spindle/config.toml`.
 
 </details>
-
----
-
-## Uninstall
-
-```bash
-spindle uninstall                          # remove spinnerVerbs + our hook from settings.json
-rm ~/.local/bin/spindle                    # remove the launcher symlink
-rm -rf ~/.cache/spindle                    # remove the cache (optional)
-rm -rf ~/.local/share/spindle-claude-code  # the cloned copy, if you used the curl install
-```
-
-`uninstall` preserves every other settings key and any hooks that aren't ours.
-Start a new Claude Code session afterward and the original spinner is back.
 
 ---
 

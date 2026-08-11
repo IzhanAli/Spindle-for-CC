@@ -19,6 +19,8 @@ import os
 import shlex
 import sys
 from typing import List, Optional
+import shutil
+from pathlib import Path
 
 from . import __version__
 from . import config as config_mod
@@ -120,6 +122,23 @@ def _cmd_uninstall(cfg) -> int:
     changed = integration.remove(cfg)
     print("removed spinnerVerbs + hook from settings" if changed
           else "nothing to remove (settings already clean)")
+
+    cache_dir = Path(cfg.cache_dir).expanduser()
+    if cache_dir.exists():
+        shutil.rmtree(cache_dir)
+        print(f"removed cache: {cache_dir}")
+
+    clone_dir = Path.home() / ".local" / "share" / "spindle-claude-code"
+    if clone_dir.exists():
+        shutil.rmtree(clone_dir)
+        print(f"removed installed bin: {clone_dir}")
+        print("(reinstall via curl from README, not `spindle install`)")
+
+    launcher = Path.home() / ".local" / "bin" / "spindle"
+    if launcher.exists() or launcher.is_symlink():
+        launcher.unlink()
+        print(f"Uninstalled Spindle!")
+
     return 0
 
 
