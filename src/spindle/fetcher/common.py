@@ -1,7 +1,8 @@
 """Shared acquisition-layer infrastructure used by both provider groups.
 
 ``FetchContext`` wraps the HTTP client + per-feed conditional-request state and
-is passed to every provider. ``safe`` isolates a provider so one failure can't
+is passed to every provider; its ``map`` runs a provider's requests in
+parallel so a refresh costs about one slow feed, not the sum of them all. ``safe`` isolates a provider so one failure can't
 sink a whole refresh. ``resolve_key`` finds an API key from config or env.
 """
 
@@ -10,12 +11,17 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Any, Callable, Dict, List, Optional
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar
 
 from ..http import fetch
 from ..util import now_ts
 
 Logger = Callable[[str], None]
+T = TypeVar("T")
+R = TypeVar("R")
+
+MAX_PARALLEL_REQUESTS = 8
 
 
 def _utc_date() -> str:
@@ -55,6 +61,18 @@ class FetchContext:
         if res.error:
             self.log(f"    ! {url}: {res.error}")
         return None
+
+    def map(self, fn: Callable[[T], R], items: Iterable[T]) -> List[R]:
+        """``[fn(x) for x in items]`` with the requests in flight concurrently.
+
+        Results keep input order. Each request writes only its own ``feeds``
+        entry, so sharing this context across threads is safe.
+        """
+        items = list(items)
+        if len(items) <= 1:
+            return [fn(x) for x in items]
+        with ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_REQUESTS, len(items))) as pool:
+            return list(pool.map(fn, items))
 
     # -- daily request quota (for keyed APIs with free-tier caps) -----------
 

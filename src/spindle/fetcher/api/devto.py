@@ -24,13 +24,15 @@ def fetch(ctx, cfg, log) -> List[RawItem]:
     min_reactions = int(conf.get("min_reactions", 0))
     tags = conf.get("tags") or [None]     # None → general top feed
 
-    items: List[RawItem] = []
-    seen: set = set()
-    for tag in tags:
+    def get(tag):
         query = {"per_page": per_page, "top": top_days}
         if tag:
             query["tag"] = tag
-        data = ctx.get_json(f"{ENDPOINT}?{urlencode(query)}")
+        return ctx.get_json(f"{ENDPOINT}?{urlencode(query)}")
+
+    items: List[RawItem] = []
+    seen: set = set()
+    for tag, data in zip(tags, ctx.map(get, tags)):
         if not isinstance(data, list):
             continue
         for a in data:

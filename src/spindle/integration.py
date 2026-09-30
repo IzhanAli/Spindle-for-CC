@@ -9,8 +9,16 @@ Claude picks one verb at random per thinking episode and composes the rest of
 the line — elapsed time, token count, spinner, effort, colors, ANSI — exactly
 as it always does. We replace one rendered token; nothing else is touched.
 
-A ``SessionStart`` hook (also written here) runs ``spindle session-start`` once
-per session to rotate the pool. No daemon, no timer, no polling.
+The plugin's own ``SessionStart`` hook (``hooks/hooks.json``) runs
+``spindle session-start`` once per session to rotate the pool. No daemon, no
+timer, no polling. Plugins can't contribute ``spinnerVerbs`` themselves, so this
+one key is written to the user settings file.
+
+Before the plugin, the curl installer wrote its own SessionStart hook into
+settings. That legacy entry is removed on every sync so the pool doesn't rotate
+twice per session. (The old install re-adds it if its own hook runs after ours
+in the same session start, so running its ``spindle uninstall`` is the clean
+upgrade path; this is the fallback.)
 
 Writes are atomic, pretty-printed, and *only happen when content changes*, so we
 never churn the user's settings file.
@@ -21,31 +29,31 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from .config import Config
 from .model import Story
 from .storage import read_json
 from .util import truncate_width
 
-HOOK_MARKER = "spindle"          # identifies a hook entry as ours
+HOOK_MARKER = "spindle"          # identifies a legacy hook entry as ours
 HOOK_SUBCOMMAND = "session-start"
 
 
 def build_display(story: Story, cfg: Config) -> str:
-    """Compose the single-line verb from the headline alone, width-capped.
+    """Compose the single-line verb from the cleaned headline, width-capped.
 
     The source tag (``prefix``) is intentionally *not* shown — the whole width
-    budget goes to the headline itself, which no longer truncates just to make
-    room for a "HN • " tag. When the AI layer has produced a compressed
-    ``ai_headline`` we render that; otherwise we fall back to the raw title.
+    budget goes to the headline itself. Only the agent-cleaned ``ai_headline``
+    is ever rendered; a story without one yields "" and is skipped, so a raw
+    feed title can never reach the spinner. The agent is asked to fit the
+    width budget, so the cap here is only a safety net.
 
     No trailing ellipsis — Claude Code appends "…" after every verb, which also
     serves as the truncation indicator.
     """
     budget = max(8, int(cfg.max_title_width))
-    title = (story.ai_headline or story.title).strip()
-    return truncate_width(title, budget)
+    return truncate_width((story.ai_headline or "").strip(), budget)
 
 
 def build_verbs(pool: List[Story], cfg: Config) -> List[str]:
@@ -59,30 +67,40 @@ def build_verbs(pool: List[Story], cfg: Config) -> List[str]:
     return verbs
 
 
-def _ensure_hook(settings: Dict[str, Any], command: str) -> bool:
-    """Idempotently ensure our SessionStart hook is present & current.
+def _is_legacy_hook(entry: Any) -> bool:
+    cmd = entry.get("command", "") if isinstance(entry, dict) else ""
+    return isinstance(cmd, str) and HOOK_MARKER in cmd and HOOK_SUBCOMMAND in cmd
 
+
+def _strip_legacy_hook(settings: Dict[str, Any]) -> bool:
+    """Drop SessionStart entries written by the pre-plugin installer.
+
+    Leaves other people's hooks untouched and prunes containers we empty.
     Returns True if ``settings`` was modified.
     """
-    hooks = settings.setdefault("hooks", {})
-    if not isinstance(hooks, dict):
+    hooks = settings.get("hooks")
+    if not isinstance(hooks, dict) or not isinstance(hooks.get("SessionStart"), list):
         return False
-    session_start = hooks.setdefault("SessionStart", [])
-    if not isinstance(session_start, list):
+    changed = False
+    groups = []
+    for group in hooks["SessionStart"]:
+        entries = group.get("hooks", []) if isinstance(group, dict) else []
+        kept = [e for e in entries if not _is_legacy_hook(e)]
+        if len(kept) != len(entries):
+            changed = True
+        if kept:
+            group["hooks"] = kept
+            groups.append(group)
+        elif not entries:
+            groups.append(group)       # not ours to judge — keep as found
+    if not changed:
         return False
-
-    for group in session_start:
-        for entry in group.get("hooks", []) if isinstance(group, dict) else []:
-            cmd = entry.get("command", "") if isinstance(entry, dict) else ""
-            if HOOK_MARKER in cmd and HOOK_SUBCOMMAND in cmd:
-                if cmd == command:
-                    return False            # already correct
-                entry["command"] = command  # path changed → update in place
-                return True
-
-    session_start.append({
-        "hooks": [{"type": "command", "command": command, "timeout": 10}]
-    })
+    if groups:
+        hooks["SessionStart"] = groups
+    else:
+        del hooks["SessionStart"]
+    if not hooks:
+        del settings["hooks"]
     return True
 
 
@@ -105,13 +123,9 @@ def _atomic_write_pretty(path: str, obj: Any) -> None:
                 pass
 
 
-def apply_pool(
-    cfg: Config,
-    pool: List[Story],
-    hook_command: Optional[str] = None,
-) -> Tuple[bool, List[str]]:
-    """Write ``spinnerVerbs`` (and, if enabled, the SessionStart hook) into the
-    Claude Code settings file, merging non-destructively.
+def apply_pool(cfg: Config, pool: List[Story]) -> Tuple[bool, List[str]]:
+    """Write ``spinnerVerbs`` into the Claude Code settings file, merging
+    non-destructively, and remove any legacy spindle hook.
 
     Returns ``(changed, verbs)``. Existing keys are preserved; the file is only
     rewritten when something actually changed.
@@ -122,16 +136,12 @@ def apply_pool(
         settings = {}
 
     verbs = build_verbs(pool, cfg)
-    changed = False
+    changed = _strip_legacy_hook(settings)
 
     if verbs:                              # never write an empty replace list
         new_spinner = {"mode": "replace", "verbs": verbs}
         if settings.get("spinnerVerbs") != new_spinner:
             settings["spinnerVerbs"] = new_spinner
-            changed = True
-
-    if cfg.manage_hook and hook_command:
-        if _ensure_hook(settings, hook_command):
             changed = True
 
     if changed:
@@ -150,7 +160,7 @@ def current_verbs(cfg: Config) -> List[str]:
 
 
 def remove(cfg: Config) -> bool:
-    """Remove our ``spinnerVerbs`` and SessionStart hook from settings.
+    """Remove our ``spinnerVerbs`` (and any legacy hook) from settings.
 
     Leaves every other key (and other people's hooks) untouched. Returns True
     if anything was removed.
@@ -159,47 +169,25 @@ def remove(cfg: Config) -> bool:
     settings = read_json(path, {})
     if not isinstance(settings, dict):
         return False
-    changed = False
 
+    changed = _strip_legacy_hook(settings)
     if "spinnerVerbs" in settings:
         del settings["spinnerVerbs"]
         changed = True
-
-    hooks = settings.get("hooks")
-    if isinstance(hooks, dict) and isinstance(hooks.get("SessionStart"), list):
-        groups = []
-        for group in hooks["SessionStart"]:
-            entries = group.get("hooks", []) if isinstance(group, dict) else []
-            kept = [
-                e for e in entries
-                if not (isinstance(e, dict)
-                        and HOOK_MARKER in e.get("command", "")
-                        and HOOK_SUBCOMMAND in e.get("command", ""))
-            ]
-            if len(kept) != len(entries):
-                changed = True
-            if kept:
-                group["hooks"] = kept
-                groups.append(group)
-        if groups:
-            hooks["SessionStart"] = groups
-        else:
-            del hooks["SessionStart"]
-        if not hooks:
-            del settings["hooks"]
 
     if changed:
         _atomic_write_pretty(path, settings)
     return changed
 
 
-def hook_installed(cfg: Config) -> bool:
+def legacy_hook_installed(cfg: Config) -> bool:
     settings = read_json(cfg.claude_settings_path, {})
     if not isinstance(settings, dict):
         return False
-    for group in settings.get("hooks", {}).get("SessionStart", []) or []:
+    hooks = settings.get("hooks")
+    groups = hooks.get("SessionStart") if isinstance(hooks, dict) else None
+    for group in groups if isinstance(groups, list) else []:
         for entry in group.get("hooks", []) if isinstance(group, dict) else []:
-            cmd = entry.get("command", "") if isinstance(entry, dict) else ""
-            if HOOK_MARKER in cmd and HOOK_SUBCOMMAND in cmd:
+            if _is_legacy_hook(entry):
                 return True
     return False

@@ -1,0 +1,14 @@
+{
+  "name": "spindle",
+  "displayName": "spindle",
+  "version": "0.2.0",
+  "description": "Turns Claude Code's thinking spinner into a live developer-news ticker. Headlines are cached locally and tightened by a Claude Code agent — no API keys.",
+  "author": {
+    "name": "Izhan Ali",
+    "url": "https://github.com/IzhanAli"
+  },
+  "homepage": "https://github.com/IzhanAli/Spindle-for-CC",
+  "repository": "https://github.com/IzhanAli/Spindle-for-CC",
+  "license": "MIT",
+  "keywords": ["spinner", "news", "rss", "hacker-news", "status-line", "developer-news"]
+}

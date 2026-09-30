@@ -1,6 +1,6 @@
-# spindle for Claude Code CLI
+# spindle: a plugin for Claude Code CLI
 
-**A tiny tool that turns Claude Code's "thinking" spinner into a live developer-news ticker.**
+**Turns Claude Code's "thinking" spinner into a live developer-news ticker.**
 
 ![spindle showing a developer-news headline in the Claude Code thinking spinner](assets/spinner-preview.png)
 
@@ -17,171 +17,208 @@ local cache:
 Apple ships Swift 6.2… (7m 33s · ↓ 27.2k tokens · thinking more with xhigh effort)
 ```
 
-No ads, no telemetry, no background process. The news sits in a local file, and **nothing of spindle's runs while
-Claude is actually thinking.** 
+No ads, no telemetry, no API keys, no daemon. The news sits in a local file,
+and **nothing of spindle's runs while Claude is actually thinking.**
+
+---
+
+## Where it works
+
+spindle works in the **Claude Code CLI** 
+Run `claude` in a terminal and the
+news shows up in its thinking spinner.
 
 ---
 
 ## Install it
 
-Prerequisites: **Python 3.8+**, **Claude Code 2.1.143 or newer**, and **git**.
+Prerequisites: **Claude Code 2.1.143 or newer** and **Python 3.8+** (found as
+`python3`, `py -3` or `python`).
 
-Run:
+In Claude Code:
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/izhanali/spindle-claude-code/main/install.sh | bash
+```
+/plugin marketplace add IzhanAli/Spindle-for-CC
+/plugin install spindle@spindle
 ```
 
-That's the whole install. It downloads spindle, grabs a first batch of news, and
-wires itself into Claude Code.
-
-Or clone it:
-
-```bash
-git clone https://github.com/izhanali/spindle-claude-code.git
-cd spindle-claude-code
-./install.sh
-```
-
-Then **start a new Claude Code session** — the next time it thinks, you'll see news.
+Then **start a new session**. spindle fetches and cleans its first batch of
+news.
 
 ---
 
 ## What just happened?
 
-The installer did three small, fully reversible things:
+Installing the plugin gave Claude Code:
 
-1. Put a `spindle` command on your PATH (a symlink in `~/.local/bin`).
-2. Downloaded ~60 recent developer-news headlines into a local cache
-   (`~/.cache/spindle`).
-3. Added **two keys** to your `~/.claude/settings.json`: the headlines
-   (`spinnerVerbs`) and a tiny startup hook that keeps them fresh. Everything
-   else already in that file is left exactly as it was.
+1. A **SessionStart hook** that puts a fresh set of headlines in the spinner at
+   the start of each session, and refreshes the news in the background when the
+   cache is over 30 minutes old.
+2. A **`headline-writer` agent** that cleans every feed title into a tight
+   spinner label. Only cleaned headlines ever reach the spinner.
+3. A few **`/spindle:` commands** (below).
 
-If `~/.local/bin` isn't on your PATH yet, the installer prints the one line to
-add to your shell profile.
+ The news cache lives in `~/.cache/spindle`.
 
 ---
 
 ## How you actually use it
 
-Here's the best part: **you don't have to do anything.** Just use Claude Code
-the way you always do. The next time it pauses to think, the spinner shows news
-instead of a random word. Start a new session and you get the next batch. 
+**You don't have to do anything.** Use Claude Code the way you always do. The
+next time it pauses to think, the spinner shows news instead of a random word.
 
-### A handful of commands (optional)
 
-You'll rarely need these — the startup hook keeps everything fresh on its own —
-but they're there when you want them:
+### Commands (optional)
 
 | Command | What it does |
 |---|---|
-| `spindle status` | show what's cached and what's queued for the spinner |
-| `spindle refresh` | pull fresh news right now |
-| `spindle reset` | restart the rotation (make everything eligible again) |
-| `spindle uninstall` | remove spindle completely |
-| `spindle version` | print the version |
+| `/spindle:status` | show what's cached and what's in the spinner right now |
+| `/spindle:refresh` | pull fresh news now, in the background — the spinner updates itself |
+| `/spindle:configure [what you want]` | tailor topics, feeds and sources — e.g. `/spindle:configure focus on Rust and Go` |
+| `/spindle:reset [all]` | restart the rotation (`all` also clears the cache) |
+| `/spindle:uninstall` | clean up settings + cache before `/plugin uninstall spindle@spindle` |
 
 ---
 
 ## FAQ
 
-**Will this slow Claude down?**
-No. While Claude thinks, *nothing of spindle's is running* — Claude is just
-reading a few words it loaded once at startup. spindle's only work is a fast,
-local settings write when a session begins, plus an occasional news refresh in
-the background.
+**Will this slow Claude down? Will I ever wait on it?**
+No, and no. While Claude thinks, *nothing of spindle's is running* — Claude is
+just reading a few words it loaded at startup. The session-start hook takes a
+fraction of a second (a local settings write). Everything slow — fetching
+feeds, the headline agent — runs in a detached background process, including
+when you run `/spindle:refresh` or `/spindle:configure`. When it finishes, the
+spinner picks up the new headlines on its own.
 
 **Is it going to mess with my Claude settings?**
-It adds two keys (`spinnerVerbs` and one `SessionStart` hook) and touches nothing
-else. `spindle uninstall` removes exactly those two and leaves the rest of your
-`settings.json` alone.
+It writes one key, `spinnerVerbs`, and touches nothing else. Its hook lives in
+the plugin, not your settings file.
 
 **Do I need an API key?**
-Nope. Out of the box it reads free, public feeds (Hacker News, Reddit, and a set
-of RSS feeds) — no accounts, no keys. Keys are only for the optional extras below.
+No. Out of the box it reads free, public feeds (Hacker News, Reddit, and a set
+of RSS feeds), and the headline agent uses your existing Claude Code login.
+Keys are only for the optional news-API mode below.
+
+**Does the headline agent use my Claude usage?**
+A little. A refresh sends only new, not-yet-cleaned headlines to Haiku, 20 per
+headless `claude -p` call with extended thinking off — usually one call of a
+few thousand tokens. Refreshes
+happen only when a session starts and the cache is over 30 minutes old. Each
+headline is cleaned once and then cached. The agent runs with no tools, no MCP
+servers and no hooks, and nothing from it is saved to your session history.
+
+**What if the agent can't run?**
+Then the spinner doesn't change. Cleaning is mandatory: spindle never shows a
+raw feed title. Stories the agent couldn't clean are retried in the background
+at your next session start (at most every 5 minutes), and `/spindle:status`
+tells you how many are cleaned.
 
 **Where does the news come from? Can I pick my own topics?**
 By default: mobile + general dev feeds (iOS, Android, Swift, Kotlin, Flutter,
-React Native, plus AI/LLMs, Python, DevOps, and friends). All of it is
-configurable — see [Make it yours](#make-it-yours).
+React Native, plus AI/LLMs, Python, DevOps, and friends). Run
+`/spindle:configure` and say what you want, or see [Make it yours](#make-it-yours).
 
 **Does it phone home?**
-No telemetry, ever. The only network it does is fetching public news feeds, and
-only during a refresh — never while Claude is thinking.
+No telemetry, ever. The only network it does is fetching public news feeds and
+the one headline-agent call, and only during a refresh — never while Claude is
+thinking.
 
 **How do I turn it off?**
-`spindle uninstall`, then start a new session. 
+Run `/spindle:uninstall`, then `/plugin uninstall spindle@spindle`, and start a
+new session.
 
 ---
 
 ## Make it yours
 
-spindle runs with zero configuration, but it's built to be fiddled with. Drop a
-config file here:
+spindle runs with zero configuration, but it's built to be fiddled with. The
+quickest way is to ask for what you want:
 
-```bash
-mkdir -p ~/.config/spindle
-cp config.example.toml ~/.config/spindle/config.toml   # from your clone
+```
+/spindle:configure only Rust, Go and Postgres news, and drop Reddit
 ```
 
-`config.example.toml` is fully commented — open it and every knob is explained.
-
+Or edit the file yourself. Copy the fully commented template to
+`~/.config/spindle/config.toml`. It's `config.example.toml` in this repo, and the
+plugin also keeps a copy under `~/.claude/plugins/`. Every setting is explained
+in its comments.
 
 - **`topics`** — the keywords spindle ranks news by. Point them at *your* stack.
 - **`[[rss]]`** — add or drop feeds. Only want Rust news? Only your favorite
   blogs? Rewrite the list.
 - **`[hackernews]` / `[reddit]`** — tune score thresholds or swap subreddits.
 - **`pool_size`** — how many headlines are in play each session (default 14).
-
-Two optional upgrades:
-
-**Sharper headlines with AI.** Raw feed titles are often long and truncate
-mid-word. Give spindle an OpenAI key and a cheap model (`gpt-4o-mini`) rewrites
-each one into a tight phrase — once, during refresh, then cached forever, so it
-never costs anything while Claude renders. No key? This simply doesn't happen and
-everything else works fine.
-
-```bash
-cp .env.example .env      # then paste your key after OPENAI_API_KEY=
-```
+- **`[ai]`** — tune the headline agent: `model` (defaults to haiku),
+  `max_words`, `batch_size`, and `claude_bin` if `claude` isn't on your `PATH`.
+  Cleaning itself can't be turned off.
 
 **More sources via news APIs.** Set `mode = "api"` to pull from NewsAPI + GNews +
-DEV.to instead of the scraper feeds. NewsAPI and GNews want free keys; DEV.to and
-Hacker News don't. spindle respects each API's free-tier daily limit
-automatically, so you won't blow through a quota.
-
-Every option, with defaults, is in the commented `config.example.toml` and in
-[Under the hood](#under-the-hood-for-the-curious).
+DEV.to instead of the scraper feeds. NewsAPI and GNews want free keys; put them
+in `~/.config/spindle/.env` (see `.env.example`). DEV.to and Hacker News don't
+need keys. spindle stays under each API's free-tier daily limit automatically,
+so you won't blow through a quota.
 
 ---
 
 ## Under the hood (for the curious)
 
 <details>
-<summary><b>Project layout &amp; installing as a package</b></summary>
+<summary><b>How the headline agent is called</b></summary>
+
+`agents/headline-writer.md` is a regular plugin agent. You can use it in a
+session as `spindle:headline-writer`, and it's also the single source of the
+prompt spindle's refresh uses. During a refresh, spindle reads that file and
+runs a locked-down headless session for each batch of up to 20 headlines, up
+to 3 at once:
 
 ```
-spindle-claude-code/
-├── bin/spindle                 # zero-install launcher (symlinked onto PATH)
-├── install.sh                  # curl- or checkout-installer: symlink + seed + hook
-├── pyproject.toml              # optional `pip install .` / pipx (console script)
+claude -p --agents '{"headline-writer": {…from the .md…, "tools": []}}' \
+          --agent headline-writer --model haiku --tools "" \
+          --strict-mcp-config \
+          --settings '{"disableAllHooks": true, "alwaysThinkingEnabled": false}' \
+          --no-session-persistence --output-format json
+```
+
+The numbered headlines go in on stdin with the word and character budget, and
+`{"labels": [...]}` comes back. The child session also gets `SPINDLE_CHILD=1`,
+so spindle's own hook stands down if it runs anyway. A failed batch —
+`claude` missing, logged out, offline, timeout, a reply with the wrong number of
+labels — is retried once. Stories still uncleaned after that are held out of
+the spinner and retried in the background at the next session start; raw
+titles are never shown. Extended thinking is off because rewriting a headline
+doesn't need it: with it on, a 10-headline call took ~80s instead of ~4s.
+
+</details>
+
+<details>
+<summary><b>Project layout</b></summary>
+
+```
+Spindle-for-CC/
+├── .claude-plugin/
+│   ├── plugin.json             # plugin manifest
+│   └── marketplace.json        # this repo is its own marketplace
+├── hooks/hooks.json            # SessionStart → spindle session-start
+├── agents/headline-writer.md   # the headline-rewriting agent
+├── skills/                     # /spindle:status, refresh, configure, reset, uninstall
+├── bin/run                     # finds Python 3.8+; what the hook and skills call
+├── bin/spindle                 # Python entry point
 ├── config.example.toml         # fully annotated config
-├── .env.example                # secrets template (API keys)
+├── .env.example                # optional news-API keys
 ├── LICENSE                     # MIT
 └── src/spindle/
     ├── __main__.py             # CLI entry point
     ├── config.py               # TOML load + defaults
     ├── model.py                # RawItem / Story dataclasses
     ├── util.py                 # width-aware truncate, url norm, similarity
-    ├── http.py                 # conditional GET + JSON POST, never raises
-    ├── summarizer.py           # optional cheap-LLM headline compression
+    ├── http.py                 # conditional GET, never raises
+    ├── summarizer.py           # headline cleaning via the headline-writer agent
     ├── storage.py              # atomic JSON cache
     ├── history.py              # rotation window
     ├── normalizer.py           # RawItem → Story
     ├── deduplicator.py         # url + title-similarity dedup
     ├── scorer.py               # weighted ranking
-    ├── integration.py          # settings.json merge (the renderer hook)
+    ├── integration.py          # spinnerVerbs merge into settings.json
     ├── pipeline.py             # refresh / sync / session-start orchestration
     └── fetcher/
         ├── __init__.py         # aggregation + FetchContext
@@ -196,22 +233,15 @@ spindle-claude-code/
             └── reddit.py       # Reddit (hot.json)
 ```
 
-There's **no build** — `bin/spindle` runs straight from the checkout. If you'd
-rather install it as a proper console script:
+There's **no build** and **no dependencies** — the standard library only. To
+hack on it, point Claude Code at your checkout:
 
 ```bash
-pipx install .          # isolated, adds `spindle` to PATH
-# or
-pip install --user .    # adds the `spindle` console script
+claude --plugin-dir ./Spindle-for-CC
 ```
 
-Re-run `spindle install` afterward so the hook points at the new executable path
-(`spindle status` shows the current hook command). To keep the cache warm without
-relying on the on-stale refresh, add a cron entry:
-
-```cron
-*/30 * * * * $HOME/.local/bin/spindle refresh
-```
+The CLI works on its own too: `sh bin/run status | refresh --sync -v |
+clean -v | reset | uninstall`.
 
 Config discovery order: `--config PATH` → `$SPINDLE_CONFIG` →
 `$SPINDLE_HOME/config.toml` → `~/.config/spindle/config.toml`.

@@ -1,0 +1,17 @@
+{
+  "name": "spindle",
+  "owner": {
+    "name": "Izhan Ali",
+    "url": "https://github.com/IzhanAli"
+  },
+  "description": "spindle — developer news in the Claude Code thinking spinner.",
+  "plugins": [
+    {
+      "name": "spindle",
+      "source": "./",
+      "description": "Turns Claude Code's thinking spinner into a live developer-news ticker.",
+      "category": "productivity",
+      "tags": ["spinner", "news"]
+    }
+  ]
+}

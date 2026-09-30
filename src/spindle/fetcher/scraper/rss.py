@@ -76,12 +76,10 @@ def parse_feed(body: bytes, prefix: Optional[str], topic: Optional[str] = None,
 
 
 def fetch(ctx, cfg, log) -> List[RawItem]:
+    feeds = [feed for feed in cfg.rss if feed.get("url")]
+    bodies = ctx.map(lambda feed: ctx.conditional_get(feed["url"]), feeds)
     items: List[RawItem] = []
-    for feed in cfg.rss:
-        url = feed.get("url")
-        if not url:
-            continue
-        body = ctx.conditional_get(url)
+    for feed, body in zip(feeds, bodies):
         if body is None:
             continue
         items += parse_feed(body, feed.get("prefix"), feed.get("topic"))

@@ -1,0 +1,20 @@
+#!/bin/sh
+# Run bin/spindle with the first working Python 3.8+ — what the plugin's hook
+# and skills call, so they work on macOS, Linux, WSL and native Windows alike.
+#
+# Claude Code runs hook and skill shell commands in sh/bash (Git Bash on native
+# Windows). There, `python3` is often missing or a Microsoft Store stub that
+# exits with an error, and Python answers to `py -3` or `python` instead. Each
+# candidate must actually start and report 3.8+, so stubs and Python 2 are skipped.
+
+here=${0%/*}
+
+for py in python3 "py -3" python; do
+  # $py is unquoted on purpose: "py -3" is a command plus an argument.
+  if $py -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' >/dev/null 2>&1; then
+    exec $py "$here/spindle" "$@"
+  fi
+done
+
+echo "spindle: no Python 3.8+ found (tried python3, py -3, python) — install Python 3 and start a new session" >&2
+exit 1
