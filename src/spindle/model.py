@@ -47,8 +47,8 @@ class Story:
     kind: str = "story"
     topic: Optional[str] = None
     score: float = 0.0
-    ai_headline: str = ""             # cheap-LLM-compressed headline (see summarizer);
-                                      # empty == not summarized, render falls back to title
+    ai_headline: str = ""             # agent-cleaned headline (see summarizer);
+                                      # empty == not cleaned yet, never displayed
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

@@ -1,6 +1,7 @@
 # spindle configuration — copy to one of:
 #   $SPINDLE_CONFIG                      (explicit override)
 #   ~/.config/spindle/config.toml        (default location)
+# or run /spindle:configure in Claude Code and describe what you want.
 #
 # Every key is optional; anything omitted falls back to the built-in default.
 # The tool works with no config file at all.
@@ -8,7 +9,7 @@
 # ── Acquisition mode ───────────────────────────────────────────────────────
 # "scraper" → RSS/Atom + Hacker News + Reddit   (no keys needed)
 # "api"     → NewsAPI + GNews + DEV.to + Hacker News
-# The two are mutually exclusive. Override once with `spindle --mode api refresh`.
+# The two are mutually exclusive. Try one once with `/spindle:refresh api`.
 mode = "scraper"
 
 # ── Cache & rendering ──────────────────────────────────────────────────────
@@ -23,31 +24,28 @@ display_separator = " • "   # between prefix and title, e.g. "IOS • SwiftUI 
 # ── Networking ─────────────────────────────────────────────────────────────
 request_timeout_secs = 8.0
 max_feed_bytes       = 5000000
-user_agent           = "spindle/0.1 (+https://github.com/izhanali/spindle-claude-code)"
+user_agent           = "spindle/0.2 (+https://github.com/IzhanAli/Spindle-for-CC)"
 
 # ── Locations ──────────────────────────────────────────────────────────────
 # cache_dir            = "~/.cache/spindle"
-claude_settings_path = "~/.claude/settings.json"
-manage_hook          = true   # set false to manage the SessionStart hook yourself
+claude_settings_path = "~/.claude/settings.json"   # where spinnerVerbs is written
 
-# ── AI headline summarizer (optional) ───────────────────────────────────────
-# A cheap chat model rewrites each headline into a short spinner label so it no
-# longer truncates mid-title. Runs only during `refresh`, one batched request,
-# and caches the result — a story is summarized once, never at render time.
+# ── Headline cleaning ───────────────────────────────────────────────────────
+# Every headline is rewritten by the plugin's `headline-writer` agent into a
+# short spinner label that fits `max_title_width`. It runs through your own
+# Claude Code login as headless `claude -p` calls during refresh (no tools, no
+# MCP, no hooks), and results are cached — a story is cleaned once, never at
+# render time. No API key needed.
 #
-# ACTIVE ONLY WHEN A KEY IS PRESENT. Put the key here, or (preferred) keep it
-# out of files by exporting it / storing it in a .env file next to this config:
-#   OPENAI_API_KEY="sk-..."        # see .env.example
-# No key → this whole layer is a silent no-op (no calls, no cost). Set
-# `enabled = false` to turn it off even when a key is exported.
+# Cleaning is mandatory: only cleaned headlines reach the spinner. Stories the
+# agent hasn't cleaned yet (e.g. `claude` unavailable, a failed call) wait for
+# the next refresh; raw feed titles are never shown.
 [ai]
-enabled      = true
-api_key      = ""                         # or $OPENAI_API_KEY
-base_url     = "https://api.openai.com/v1"
-model        = "gpt-4o-mini"              # any cheap chat model
+model        = ""                         # empty → the agent's model (haiku)
+claude_bin   = ""                         # empty → `claude` on PATH
 max_words    = 24                         # target length of each label
-max_items    = 40                         # headlines summarized per refresh (cost guard)
-timeout_secs = 20.0
+batch_size   = 20                         # headlines per agent call (run in parallel)
+timeout_secs = 120.0                      # per agent call
 
 # ── Topics (used for relevance scoring) ─────────────────────────────────────
 topics = [

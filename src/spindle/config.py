@@ -97,18 +97,16 @@ DEFAULT_DEVTO = {
              "kotlin", "swift", "ai", "programming"],
 }
 
-# Optional AI layer: a cheap chat model that compresses raw headlines into short
-# spinner labels. Runs only during `refresh`, one batched request. Active only
-# when a key is present (`api_key` here or $OPENAI_API_KEY) — no key means a
-# complete no-op, so the tool still works with zero configuration and zero cost.
+# Headline cleaning: the plugin's `headline-writer` agent rewrites every raw
+# headline into a short spinner label via headless `claude -p` calls, using the
+# user's existing Claude Code login. Runs only during `refresh`. Mandatory — a
+# story is shown only once it has been cleaned; there is no raw-title fallback.
 DEFAULT_AI = {
-    "enabled": True,
-    "api_key": "",            # or $OPENAI_API_KEY (e.g. from a .env file)
-    "base_url": "https://api.openai.com/v1",
-    "model": "gpt-4o-mini",   # any cheap chat model (gpt-4o-mini, gpt-4.1-nano, …)
-    "max_words": 24,          # target length of each compressed headline
-    "max_items": 40,          # cap headlines summarized per refresh (cost guard)
-    "timeout_secs": 20.0,
+    "model": "",              # empty → the agent's own model (haiku)
+    "claude_bin": "",         # empty → `claude` on PATH
+    "max_words": 24,          # target length of each cleaned headline
+    "batch_size": 20,         # headlines per agent call (calls run in parallel)
+    "timeout_secs": 120.0,    # per agent call
 }
 
 DEFAULT_REDDIT = {
@@ -171,7 +169,7 @@ class Config:
     # networking
     request_timeout_secs: float = 8.0
     max_feed_bytes: int = 5_000_000
-    user_agent: str = "spindle/0.1 (+https://github.com/izhanali/spindle-claude-code)"
+    user_agent: str = "spindle/0.2 (+https://github.com/IzhanAli/Spindle-for-CC)"
     # Optional TLS CA bundle path. Leave empty to auto-detect (certifi / system
     # bundle). Set this to your corporate root CA if behind a TLS-inspecting
     # proxy. Also honored via $SPINDLE_CA_BUNDLE / $SSL_CERT_FILE.
@@ -180,7 +178,6 @@ class Config:
     # locations
     cache_dir: str = ""            # resolved in __post_init__
     claude_settings_path: str = "~/.claude/settings.json"
-    manage_hook: bool = True
 
     topics: List[str] = field(default_factory=lambda: list(DEFAULT_TOPICS))
     weights: Dict[str, float] = field(default_factory=lambda: dict(DEFAULT_WEIGHTS))
@@ -194,7 +191,7 @@ class Config:
     newsapi: Dict[str, Any] = field(default_factory=lambda: dict(DEFAULT_NEWSAPI))
     gnews: Dict[str, Any] = field(default_factory=lambda: dict(DEFAULT_GNEWS))
     devto: Dict[str, Any] = field(default_factory=lambda: dict(DEFAULT_DEVTO))
-    # optional AI headline summarizer (both modes)
+    # headline cleaning via the headline-writer agent (both modes, mandatory)
     ai: Dict[str, Any] = field(default_factory=lambda: dict(DEFAULT_AI))
 
     def __post_init__(self) -> None:
@@ -238,8 +235,8 @@ def _merge_table(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, An
 
 def _load_dotenv() -> None:
     """Best-effort: load ``KEY=VALUE`` lines from a ``.env`` file into the
-    environment, so secrets like ``OPENAI_API_KEY`` can live in a file instead
-    of the shell profile.
+    environment, so secrets like ``NEWSAPI_KEY`` can live in a file instead of
+    the shell profile.
 
     Precedence is standard dotenv: an already-exported variable always wins, so
     the file never overrides the real environment. Never raises. The first
@@ -248,7 +245,9 @@ def _load_dotenv() -> None:
         1. ``$SPINDLE_ENV``
         2. ``$SPINDLE_HOME/.env``
         3. ``$XDG_CONFIG_HOME/spindle/.env``   (next to config.toml)
-        4. ``./.env``                          (current working directory)
+
+    The working directory is deliberately *not* searched: the plugin hook runs
+    in whatever project is open, and that project's ``.env`` is none of ours.
     """
     candidates: List[str] = []
     if os.environ.get("SPINDLE_ENV"):
@@ -257,7 +256,6 @@ def _load_dotenv() -> None:
         candidates.append(os.path.join(os.environ["SPINDLE_HOME"], ".env"))
     xdg = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
     candidates.append(os.path.join(xdg, "spindle", ".env"))
-    candidates.append(os.path.join(os.getcwd(), ".env"))
 
     for path in candidates:
         path = os.path.expanduser(path)
@@ -301,7 +299,7 @@ def load(explicit_path: Optional[str] = None) -> Config:
         "ttl_minutes", "max_stories", "max_age_hours", "history_size",
         "pool_size", "max_title_width", "display_separator",
         "request_timeout_secs", "max_feed_bytes", "user_agent", "ca_bundle",
-        "cache_dir", "claude_settings_path", "manage_hook",
+        "cache_dir", "claude_settings_path",
     )
     for key in scalars:
         if key in data:

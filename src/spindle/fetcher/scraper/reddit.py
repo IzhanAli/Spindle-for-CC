@@ -20,9 +20,10 @@ def fetch(ctx, cfg, log) -> List[RawItem]:
     min_score = int(rc.get("min_score", 0))
     prefix = rc.get("prefix", "RDT")
 
+    subs = list(rc.get("subreddits", []))
+    pages = ctx.map(lambda sub: ctx.get_json(HOT.format(sub=sub, n=limit)), subs)
     items: List[RawItem] = []
-    for sub in rc.get("subreddits", []):
-        data = ctx.get_json(HOT.format(sub=sub, n=limit))
+    for sub, data in zip(subs, pages):
         if not isinstance(data, dict):
             continue
         for child in data.get("data", {}).get("children", []):

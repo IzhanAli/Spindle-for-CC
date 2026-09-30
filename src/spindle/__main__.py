@@ -1,12 +1,15 @@
-"""Command-line interface.
+"""Command-line interface — what the plugin's hook and skills call.
 
-    spindle install         seed the cache and register the SessionStart hook
-    spindle refresh         fetch + rebuild the cache (network)
-    spindle sync            advance the pool and write settings (local)
-    spindle session-start   SessionStart hook entry point (sync + maybe refresh)
-    spindle status          show cache & integration status
-    spindle reset [--all]   reset rotation history (and optionally the cache)
-    spindle uninstall       remove spinnerVerbs + hook from settings
+    spindle refresh [--sync] [--background]
+                              fetch + rebuild the cache (network); --sync also
+                              writes the new pool to settings right away;
+                              --background detaches and returns immediately
+    spindle clean [--sync]    clean headlines still waiting for the agent
+    spindle sync              advance the pool and write settings (local)
+    spindle session-start     SessionStart hook entry point (sync + maybe refresh)
+    spindle status            show cache & integration status
+    spindle reset [--all]     reset rotation history (and optionally the cache)
+    spindle uninstall         remove spinnerVerbs, the cache, and pre-plugin leftovers
     spindle version
 
 Global flags (--config, --mode, -v) work before or after the subcommand.
@@ -16,17 +19,19 @@ from __future__ import annotations
 
 import argparse
 import os
-import shlex
+import shutil
 import sys
 from typing import List, Optional
-import shutil
-from pathlib import Path
 
 from . import __version__
 from . import config as config_mod
 from . import integration, pipeline, storage
 
 _SUPPRESS = argparse.SUPPRESS
+
+# Where the pre-plugin curl installer put its checkout and launcher symlink.
+_LEGACY_CLONE = os.path.expanduser("~/.local/share/spindle-claude-code")
+_LEGACY_LAUNCHER = os.path.expanduser("~/.local/bin/spindle")
 
 
 def _make_logger(verbose: bool):
@@ -48,32 +53,9 @@ def _reinvoke_argv(explicit_config: Optional[str]) -> List[str]:
     return base
 
 
-def _hook_command(explicit_config: Optional[str]) -> str:
-    argv = _reinvoke_argv(explicit_config) + ["session-start"]
-    return " ".join(shlex.quote(a) for a in argv)
-
-
 # --------------------------------------------------------------------------- #
 # Commands
 # --------------------------------------------------------------------------- #
-
-def _cmd_install(cfg, no_refresh, config_path, hook_command, log) -> int:
-    storage.ensure_dir(cfg.cache_dir)
-    print(f"spindle: installing (mode={cfg.mode})…")
-    if not no_refresh:
-        print("  • fetching initial news (one-time, network)…")
-        res = pipeline.refresh(cfg, log)
-        print(f"    cached {res.get('cached', 0)} stories")
-    res = pipeline.sync(cfg, hook_command, log)
-    print(f"  • wrote {res['pool']} spinner verbs to {cfg.claude_settings_path}")
-    print(f"  • SessionStart hook: {'installed' if integration.hook_installed(cfg) else 'NOT installed'}")
-    print()
-    print("Done. New Claude Code sessions will show developer news in the spinner.")
-    print("Keep the cache warm with a periodic refresh, e.g. add to crontab:")
-    argv = _reinvoke_argv(config_path) + ["refresh"]
-    print(f"    */30 * * * * {' '.join(shlex.quote(a) for a in argv)}")
-    return 0
-
 
 def _fmt_age(secs: Optional[int]) -> str:
     if secs is None:
@@ -90,17 +72,19 @@ def _cmd_status(cfg) -> int:
     print(f"mode            {info['mode']}")
     print(f"cache dir       {info['cache_dir']}")
     print(f"settings        {info['settings_path']}")
-    print(f"stories cached  {info['story_count']}")
-    print(f"last refresh    {_fmt_age(info['age_secs'])}"
-          f"  ({'STALE' if info['stale'] else 'fresh'})")
+    print(f"stories cached  {info['story_count']} ({info['cleaned_count']} cleaned)")
+    state = "refreshing now" if info["refreshing"] else ("STALE" if info["stale"] else "fresh")
+    print(f"last refresh    {_fmt_age(info['age_secs'])}  ({state})")
     print(f"rotation        {info['history_shown']} shown, epoch {info['history_epoch']}")
-    print(f"hook installed  {'yes' if info['hook_installed'] else 'no'}")
+    print(f"headline agent  {info['claude_bin'] or 'claude not found — spinner will not update'}")
+    if info["legacy_hook"]:
+        print("legacy hook     yes (old curl install still registered — see README › Upgrading)")
     verbs = info["installed_verbs"]
     print(f"verbs in pool   {len(verbs)}")
     for v in verbs[:8]:
         print(f"    {v}…")
     if info["top"]:
-        print("top stories:  (ai = AI-summarized headline)")
+        print("top stories:  (ai = cleaned; untagged ones wait for the next refresh)")
         for s in info["top"]:
             shown = s.ai_headline or s.title
             tag = "ai" if s.ai_headline else "  "
@@ -120,25 +104,23 @@ def _cmd_reset(cfg, reset_all) -> int:
 
 def _cmd_uninstall(cfg) -> int:
     changed = integration.remove(cfg)
-    print("removed spinnerVerbs + hook from settings" if changed
+    print("removed spinnerVerbs from settings" if changed
           else "nothing to remove (settings already clean)")
 
-    cache_dir = Path(cfg.cache_dir).expanduser()
-    if cache_dir.exists():
-        shutil.rmtree(cache_dir)
-        print(f"removed cache: {cache_dir}")
+    if os.path.isdir(cfg.cache_dir):
+        shutil.rmtree(cfg.cache_dir)
+        print(f"removed cache: {cfg.cache_dir}")
 
-    clone_dir = Path.home() / ".local" / "share" / "spindle-claude-code"
-    if clone_dir.exists():
-        shutil.rmtree(clone_dir)
-        print(f"removed installed bin: {clone_dir}")
-        print("(reinstall via curl from README, not `spindle install`)")
-
-    launcher = Path.home() / ".local" / "bin" / "spindle"
-    if launcher.exists() or launcher.is_symlink():
-        launcher.unlink()
-        print(f"Uninstalled Spindle!")
-
+    # Pre-plugin install leftovers: only the launcher symlink that points into
+    # the old clone, never some other `spindle` on PATH.
+    if (os.path.islink(_LEGACY_LAUNCHER)
+            and os.path.realpath(_LEGACY_LAUNCHER).startswith(
+                os.path.realpath(_LEGACY_CLONE) + os.sep)):
+        os.unlink(_LEGACY_LAUNCHER)
+        print(f"removed legacy launcher: {_LEGACY_LAUNCHER}")
+    if os.path.isdir(_LEGACY_CLONE):
+        shutil.rmtree(_LEGACY_CLONE)
+        print(f"removed legacy checkout: {_LEGACY_CLONE}")
     return 0
 
 
@@ -162,17 +144,23 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Developer news in the Claude Code thinking spinner.",
     )
     sub = parser.add_subparsers(dest="cmd")
-    sub.add_parser("refresh", parents=[common], help="fetch + rebuild the cache")
+    p_refresh = sub.add_parser("refresh", parents=[common], help="fetch + rebuild the cache")
+    p_refresh.add_argument("--sync", action="store_true", default=_SUPPRESS,
+                           help="write the refreshed pool to settings right away")
+    p_refresh.add_argument("--background", action="store_true", default=_SUPPRESS,
+                           help="run detached (with --sync) and return immediately")
+    p_clean = sub.add_parser("clean", parents=[common],
+                             help="clean headlines still waiting for the agent")
+    p_clean.add_argument("--sync", action="store_true", default=_SUPPRESS,
+                         help="write the pool to settings when done")
     sub.add_parser("sync", parents=[common], help="advance the pool and write settings")
     sub.add_parser("session-start", parents=[common], help="SessionStart hook entry point")
-    p_install = sub.add_parser("install", parents=[common], help="seed cache + register the hook")
-    p_install.add_argument("--no-refresh", action="store_true", default=_SUPPRESS,
-                           help="skip the initial network fetch")
     sub.add_parser("status", parents=[common], help="show cache & integration status")
     p_reset = sub.add_parser("reset", parents=[common], help="reset rotation history")
     p_reset.add_argument("--all", action="store_true", default=_SUPPRESS,
                          help="also clear the story cache")
-    sub.add_parser("uninstall", parents=[common], help="remove spinnerVerbs + hook from settings")
+    sub.add_parser("uninstall", parents=[common],
+                   help="remove spinnerVerbs, the cache, and pre-plugin leftovers")
     sub.add_parser("version", parents=[common], help="print version")
     return parser
 
@@ -188,28 +176,38 @@ def main(argv: Optional[List[str]] = None) -> int:
     cfg = config_mod.load(config_path)
     if mode:
         cfg.mode = mode
-    hook_command = _hook_command(config_path) if cfg.manage_hook else None
 
     cmd = args.cmd or "status"
     try:
         if cmd == "version":
             print(f"spindle {__version__}")
             return 0
+        if cmd == "refresh" and getattr(args, "background", False):
+            if pipeline.spawn_refresh(cfg, _reinvoke_argv(config_path), log):
+                print("spindle: refreshing in the background — the spinner "
+                      "updates on its own when it's done")
+            else:
+                print("spindle: a refresh is already running — the spinner "
+                      "updates on its own when it's done")
+            return 0
         if cmd == "refresh":
-            pipeline.refresh(cfg, log)
+            res = pipeline.refresh(cfg, log)
+            if getattr(args, "sync", False) and not res.get("skipped"):
+                pipeline.sync(cfg, log)
+            return 0
+        if cmd == "clean":
+            res = pipeline.clean(cfg, log)
+            if getattr(args, "sync", False) and not res.get("skipped"):
+                pipeline.sync(cfg, log)
             return 0
         if cmd == "sync":
-            pipeline.sync(cfg, hook_command, log)
+            pipeline.sync(cfg, log)
             return 0
         if cmd == "session-start":
             # Must be fast and silent: stdout from a SessionStart hook is fed to
             # Claude as context, so we print nothing there.
-            refresh_argv = _reinvoke_argv(config_path) + ["refresh"]
-            pipeline.session_start(cfg, hook_command, refresh_argv, log)
+            pipeline.session_start(cfg, _reinvoke_argv(config_path), log)
             return 0
-        if cmd == "install":
-            return _cmd_install(cfg, getattr(args, "no_refresh", False),
-                                config_path, hook_command, log)
         if cmd == "status":
             return _cmd_status(cfg)
         if cmd == "reset":
