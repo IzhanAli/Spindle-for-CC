@@ -14,3 +14,6 @@ venv/
 # secrets — API keys live here, never in git
 .env
 .env.local
+
+# editor types Claude Code writes when it loads this checkout as a plugin
+/.claude-plugin/types/

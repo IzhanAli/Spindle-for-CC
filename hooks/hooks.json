@@ -1,5 +1,6 @@
 {
-  "description": "Rotate the spinner's news pool each session; refresh the cache in the background when stale.",
+  "description": "Rotate the spinner's news pool each session; refresh the cache in the background when stale. The module shows the same headlines in the Desktop app's spinner.",
+  "modules": ["./spinner.ts"],
   "hooks": {
     "SessionStart": [
       {
