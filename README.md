@@ -1,4 +1,4 @@
-# spindle: a plugin for Claude Code CLI
+# spindle: a plugin for Claude Code
 
 **Turns Claude Code's "thinking" spinner into a live developer-news ticker.**
 
@@ -24,16 +24,23 @@ and **nothing of spindle's runs while Claude is actually thinking.**
 
 ## Where it works
 
-spindle works in the **Claude Code CLI** 
-Run `claude` in a terminal and the
-news shows up in its thinking spinner.
+- **The Claude Code CLI.** Run `claude` in a terminal and the news shows up in
+  its thinking spinner.
+- **The Code tab of the Claude Desktop app** (local and SSH sessions). The
+  same headlines show up in the row that tracks Claude's turn. This part is a
+  [mod](https://code.claude.com/docs/en/plugins/mods/overview), so it needs
+  Claude Code 2.1.287 or newer.
+
+In the Desktop app the headline shows while Claude thinks or writes. When the
+row is describing a tool step, like `Editing app.ts`, that step stays in view:
+the news never hides what Claude is doing.
 
 ---
 
 ## Install it
 
-Prerequisites: **Claude Code 2.1.143 or newer** and **Python 3.8+** (found as
-`python3`, `py -3` or `python`).
+Prerequisites: **Claude Code 2.1.143 or newer** (2.1.287 or newer for the
+Desktop app) and **Python 3.8+** (found as `python3`, `py -3` or `python`).
 
 In Claude Code:
 
@@ -41,6 +48,11 @@ In Claude Code:
 /plugin marketplace add IzhanAli/Spindle-for-CC
 /plugin install spindle@spindle
 ```
+
+In the Desktop app, add the `IzhanAli/Spindle-for-CC` marketplace, then
+install spindle from **+ > Plugins > Add plugin** in the Code tab. The CLI and
+the Desktop app read the same settings, so a user-scope install in either one
+covers both.
 
 Then **start a new session**. spindle fetches and cleans its first batch of
 news.
@@ -57,6 +69,9 @@ Installing the plugin gave Claude Code:
 2. A **`headline-writer` agent** that cleans every feed title into a tight
    spinner label. Only cleaned headlines ever reach the spinner.
 3. A few **`/spindle:` commands** (below).
+4. A **mod** (`hooks/spinner.ts`) that shows the same headlines in the Desktop
+   app's spinner row, which doesn't read the `spinnerVerbs` setting the
+   terminal uses.
 
  The news cache lives in `~/.cache/spindle`.
 
@@ -84,15 +99,19 @@ next time it pauses to think, the spinner shows news instead of a random word.
 
 **Will this slow Claude down? Will I ever wait on it?**
 No, and no. While Claude thinks, *nothing of spindle's is running* — Claude is
-just reading a few words it loaded at startup. The session-start hook takes a
-fraction of a second (a local settings write). Everything slow — fetching
-feeds, the headline agent — runs in a detached background process, including
-when you run `/spindle:refresh` or `/spindle:configure`. When it finishes, the
-spinner picks up the new headlines on its own.
+just reading a few words it loaded at startup. In the Desktop app, the mod
+picks the turn's headline once, as the turn starts, from the same
+`spinnerVerbs` list; drawing the row only reads that pick. The
+session-start hook takes a fraction of a second (a local settings write).
+Everything slow — fetching feeds, the headline agent — runs in a detached
+background process, including when you run `/spindle:refresh` or
+`/spindle:configure`. When it finishes, the spinner picks up the new headlines
+on its own.
 
 **Is it going to mess with my Claude settings?**
 It writes one key, `spinnerVerbs`, and touches nothing else. Its hook lives in
-the plugin, not your settings file.
+the plugin, not your settings file. The Desktop mod only reads settings; it
+never writes them.
 
 **Do I need an API key?**
 No. Out of the box it reads free, public feeds (Hacker News, Reddit, and a set
@@ -198,7 +217,12 @@ Spindle-for-CC/
 ├── .claude-plugin/
 │   ├── plugin.json             # plugin manifest
 │   └── marketplace.json        # this repo is its own marketplace
-├── hooks/hooks.json            # SessionStart → spindle session-start
+├── hooks/
+│   ├── hooks.json              # SessionStart → spindle session-start; loads the mod
+│   └── spinner.ts              # mod: headlines in the Desktop app's spinner row
+├── types/index.d.ts            # the mod's $.state contract
+├── tests/spinner.test.ts       # the mod's tests (`claude plugin test .`)
+├── tsconfig.json               # type-checks the mod (`tsc -p .`)
 ├── agents/headline-writer.md   # the headline-rewriting agent
 ├── skills/                     # /spindle:status, refresh, configure, reset, uninstall
 ├── bin/run                     # finds Python 3.8+; what the hook and skills call
@@ -233,11 +257,23 @@ Spindle-for-CC/
             └── reddit.py       # Reddit (hot.json)
 ```
 
-There's **no build** and **no dependencies** — the standard library only. To
-hack on it, point Claude Code at your checkout:
+There's **no build** and **no dependencies** — the Python standard library,
+and a TypeScript mod that Claude Code loads as is. To hack on it, point Claude
+Code at your checkout:
 
 ```bash
 claude --plugin-dir ./Spindle-for-CC
+```
+
+For the Desktop app, which takes no flags, set `CLAUDE_CODE_PLUGIN_DIRS` to
+the checkout's absolute path in the `env` block of `~/.claude/settings.json`.
+Loading the checkout this way also writes the mod's editor types to
+`.claude-plugin/types/` (git-ignored). To check the mod:
+
+```bash
+claude plugin validate .   # what the mod hooks and calls, and anything refused
+claude plugin test .       # tests/spinner.test.ts
+tsc -p .                   # type-check, once the checkout has been loaded
 ```
 
 The CLI works on its own too: `sh bin/run status | refresh --sync -v |
