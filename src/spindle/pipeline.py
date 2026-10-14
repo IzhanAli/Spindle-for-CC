@@ -24,7 +24,7 @@ from .deduplicator import deduplicate
 from .fetcher import collect
 from .history import select_pool
 from .model import Story
-from .normalizer import normalize
+from .normalizer import is_registry_listing, normalize
 from .scorer import score_all
 from .util import now_ts
 
@@ -136,11 +136,13 @@ def refresh(cfg: Config, log: Logger = lambda _m: None) -> Dict[str, Any]:
             merged[s.id] = keep
         stories = list(merged.values())
 
-        # Drop anything past the freshness horizon.
+        # Drop anything past the freshness horizon, plus registry release pages
+        # cached before they were filtered at fetch time.
         max_age = cfg.max_age_hours * 3600
         stories = [
             s for s in stories
             if (now - (s.published_ts or s.fetched_ts or now)) <= max_age
+            and not is_registry_listing(s.url)
         ]
 
         score_all(stories, cfg, now)
