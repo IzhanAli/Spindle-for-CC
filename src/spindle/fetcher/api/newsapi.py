@@ -35,6 +35,9 @@ def fetch(ctx, cfg, log) -> List[RawItem]:
     log(f"    newsapi: q = {query}")
     params = urlencode({
         "q": query,
+        # Default searches the full article body, where generic topics like
+        # "Mobile"/"Android" match boilerplate on any unrelated story.
+        "searchIn": conf.get("search_in", "title,description"),
         "language": conf.get("language", "en"),
         "sortBy": "publishedAt",
         "pageSize": int(conf.get("page_size", 30)),

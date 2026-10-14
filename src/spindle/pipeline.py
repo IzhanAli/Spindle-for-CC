@@ -25,7 +25,7 @@ from .fetcher import collect
 from .history import select_pool
 from .model import Story
 from .normalizer import is_registry_listing, normalize
-from .scorer import score_all
+from .scorer import drop_off_topic, score_all
 from .util import now_ts
 
 Logger = Callable[[str], None]
@@ -129,21 +129,25 @@ def refresh(cfg: Config, log: Logger = lambda _m: None) -> Dict[str, Any]:
             keep.signal = max(s.signal, prev.signal)
             if not keep.published_ts:
                 keep.published_ts = other.published_ts or keep.published_ts
-            # Carry the cached AI headline forward so we never re-summarize (a
-            # freshly-normalized `s` always has an empty ai_headline).
+            # Carry the cached AI headline and tag forward so we never
+            # re-summarize (a freshly-normalized `s` has neither).
             if not keep.ai_headline:
                 keep.ai_headline = other.ai_headline
+                keep.tag = other.tag
             merged[s.id] = keep
         stories = list(merged.values())
 
         # Drop anything past the freshness horizon, plus registry release pages
-        # cached before they were filtered at fetch time.
+        # cached before they were filtered at fetch time, plus general-news
+        # stories with no dev/AI keyword — before cleaning, so none is spent on
+        # them.
         max_age = cfg.max_age_hours * 3600
         stories = [
             s for s in stories
             if (now - (s.published_ts or s.fetched_ts or now)) <= max_age
             and not is_registry_listing(s.url)
         ]
+        stories = drop_off_topic(stories, cfg)
 
         score_all(stories, cfg, now)
         stories = deduplicate(stories)
@@ -174,7 +178,7 @@ def needs_clean(cfg: Config, meta: Optional[Dict[str, Any]] = None) -> bool:
         meta = storage.load_meta(cfg.cache_dir)
     if now_ts() - int(meta.get("last_clean_ts", 0)) < CLEAN_RETRY_SECS:
         return False
-    return any(not s.ai_headline for s in storage.load_stories(cfg.cache_dir))
+    return any(summarizer.needs_cleaning(s) for s in storage.load_stories(cfg.cache_dir))
 
 
 def clean(cfg: Config, log: Logger = lambda _m: None) -> Dict[str, Any]:
@@ -202,8 +206,12 @@ def sync(cfg: Config, log: Logger = lambda _m: None) -> Dict[str, Any]:
     storage.ensure_dir(cfg.cache_dir)
     # Only agent-cleaned headlines are eligible; uncleaned stories wait for a
     # refresh to clean them. With none cleaned, no verbs are written and the
-    # spinner keeps whatever it had.
-    stories = [s for s in storage.load_stories(cfg.cache_dir) if s.ai_headline]
+    # spinner keeps whatever it had. Stories the agent judged off topic stay
+    # cached (so they're never cleaned again) but are never shown.
+    stories = [
+        s for s in storage.load_stories(cfg.cache_dir)
+        if s.ai_headline and s.tag != summarizer.OFF_TOPIC_TAG
+    ]
     stories.sort(key=lambda s: s.score, reverse=True)
 
     history = storage.load_history(cfg.cache_dir)

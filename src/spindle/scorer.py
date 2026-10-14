@@ -1,6 +1,15 @@
-"""Weighted ranking.
+"""Topic filter and weighted ranking.
 
-Final score = weighted sum of normalized components:
+Off-topic stories from the general news APIs are dropped outright. Those APIs
+search all of the web's news, so a title matching no developer/AI vocabulary —
+and not marked a release by its feed — is noise like film news matched on a
+stray word. Release *wording* ("released", "launches") doesn't count — films
+launch too. Stories from developer communities (Hacker News, DEV.to, Reddit,
+dev RSS feeds) skip this check: a real dev story there often has a title no
+keyword list anticipates ("Recreational programming", "Math 2.0"). The headline
+agent judges every story and tags the actual noise ``OFF``.
+
+The rest are ranked. Final score = weighted sum of normalized components:
 
     freshness      exponential decay on age (half-life ~18h)
     signal         log-scaled popularity (HN points / Reddit score)
@@ -10,17 +19,14 @@ Final score = weighted sum of normalized components:
 
 The weighted sum is then scaled by a per-source multiplier (``source_weights``),
 so a preferred source such as DEV.to can lead the ranking while others remain.
-Finally, stories that match no developer/AI vocabulary and aren't a release are
-scaled down by ``offtopic_penalty`` — this is what keeps general-interest Hacker
-News front-page items out of a *developer* news pool. All knobs come from config
-so the ranking is fully tunable.
+All knobs come from config so the ranking is fully tunable.
 """
 
 from __future__ import annotations
 
 import math
 import re
-from typing import Iterable, Set
+from typing import Iterable, List, Set, Tuple
 
 from .config import Config
 from .model import Story
@@ -33,22 +39,25 @@ _DEV_KEYWORDS = {
     "app store", "play store", "testflight", "kmp", "objective-c",
     "mobile", "app clip", "widget", "apk", "aab", "ipa",
     # general programming
-    "python", "javascript", "typescript", "java", "rust", "go", "node",
+    "python", "javascript", "typescript", "java", "rust", "golang", "node",
     "programming", "framework", "sdk", "api", "compiler", "runtime",
-    "open source", "library", "release", "cloud", "database", "devops",
-    "kubernetes", "docker", "postgres", "webassembly", "performance",
+    "open source", "library", "cloud", "database", "devops",
+    "kubernetes", "docker", "postgres", "webassembly",
     # web platform, tooling, infra & security — so genuinely-technical stories
     # (which the narrower list missed) register as developer-relevant.
-    "html", "css", "web", "browser", "http", "https", "graphql", "rest",
+    "html", "css", "web", "browser", "http", "https", "graphql", "rest api",
     "git", "github", "gitlab", "codeberg", "cli", "shell", "terminal",
     "linux", "kernel", "unix", "sqlite", "redis", "protocol",
     "security", "vulnerability", "encryption", "authentication", "oauth",
     "typescript", "react", "vue", "svelte", "webkit", "chromium",
+    "show hn", "launch hn",
+    # hardware
+    "cpu", "gpu", "chip", "chips", "nvidia", "intel", "amd", "semiconductor",
 }
 
 _AI_KEYWORDS = {
     "ai", "llm", "llms", "gpt", "claude", "gemini", "anthropic", "openai",
-    "model", "models", "agent", "agents", "ml", "machine learning",
+    "agentic", "ml", "machine learning",
     "transformer", "inference", "rag", "embedding", "fine-tune", "prompt",
     "mcp", "on-device", "coreml", "mlx", "diffusion", "neural",
 }
@@ -58,6 +67,9 @@ _RELEASE_RE = re.compile(
     r"now available|generally available|\bga\b|changelog|ships?|shipped)\b",
     re.IGNORECASE,
 )
+
+# Sources whose results come from all news, not a developer community.
+GENERAL_NEWS_SOURCES = {"newsapi", "gnews"}
 
 _WORD_RE = re.compile(r"[a-z0-9][a-z0-9\-\+\.]*")
 _FRESHNESS_HALFLIFE_H = 18.0
@@ -81,7 +93,6 @@ class Scorer:
     def __init__(self, cfg: Config) -> None:
         self.w = cfg.weights
         self.source_weights = cfg.source_weights or {}
-        self.offtopic_penalty = float(getattr(cfg, "offtopic_penalty", 0.35))
         # Fold configured topics into the dev vocabulary so custom topics count.
         self.dev = set(_DEV_KEYWORDS)
         for topic in cfg.topics:
@@ -90,6 +101,18 @@ class Scorer:
                 self.dev.add(t)
         self.ai = set(_AI_KEYWORDS)
 
+    def _relevance(self, s: Story) -> Tuple[float, float]:
+        """``(dev, ai)`` keyword relevance of the title."""
+        text = s.title.lower()
+        words = set(_WORD_RE.findall(text))
+        return _relevance(words, text, self.dev), _relevance(words, text, self.ai)
+
+    def on_topic(self, s: Story) -> bool:
+        if s.source not in GENERAL_NEWS_SOURCES:
+            return True
+        dev, ai = self._relevance(s)
+        return dev > 0.0 or ai > 0.0 or s.kind == "release"
+
     def score(self, s: Story, now: int) -> float:
         ref_ts = s.published_ts or s.fetched_ts or now
         age_h = max(0.0, (now - ref_ts) / 3600.0)
@@ -97,11 +120,8 @@ class Scorer:
 
         signal = min(1.0, math.log1p(max(0.0, s.signal)) / _SIGNAL_REFERENCE)
 
-        text = s.title.lower()
-        words = set(_WORD_RE.findall(text))
-        dev = _relevance(words, text, self.dev)
-        ai = _relevance(words, text, self.ai)
-        release = 1.0 if (s.kind == "release" or _RELEASE_RE.search(text)) else 0.0
+        dev, ai = self._relevance(s)
+        release = 1.0 if (s.kind == "release" or _RELEASE_RE.search(s.title)) else 0.0
 
         base = (
             self.w.get("freshness", 1.0) * freshness
@@ -112,15 +132,13 @@ class Scorer:
         )
         # Per-source multiplier lets a preferred source (e.g. DEV.to) lead the
         # ranking without silencing the others.
-        score = base * float(self.source_weights.get(s.source, 1.0))
+        return base * float(self.source_weights.get(s.source, 1.0))
 
-        # Off-topic penalty: a story that matches no dev/AI vocabulary and isn't
-        # a release is general-interest noise (e.g. front-page HN chatter) in a
-        # *developer* news tool. Demote it so freshness + popularity alone can't
-        # float it into the pool ahead of relevant stories.
-        if dev == 0.0 and ai == 0.0 and release == 0.0:
-            score *= self.offtopic_penalty
-        return score
+
+def drop_off_topic(stories: List[Story], cfg: Config) -> List[Story]:
+    """The stories that are on topic (see the module docstring)."""
+    scorer = Scorer(cfg)
+    return [s for s in stories if scorer.on_topic(s)]
 
 
 def score_all(stories, cfg: Config, now: int) -> None:
