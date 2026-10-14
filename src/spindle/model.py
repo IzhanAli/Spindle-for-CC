@@ -49,6 +49,8 @@ class Story:
     score: float = 0.0
     ai_headline: str = ""             # agent-cleaned headline (see summarizer);
                                       # empty == not cleaned yet, never displayed
+    tag: str = ""                     # agent's 3-letter topic code ("IOS", "LLM"),
+                                      # shown before the headline
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

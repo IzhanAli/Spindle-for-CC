@@ -84,11 +84,11 @@ def _cmd_status(cfg) -> int:
     for v in verbs[:8]:
         print(f"    {v}…")
     if info["top"]:
-        print("top stories:  (ai = cleaned; untagged ones wait for the next refresh)")
+        print("top stories:  (topic tag = cleaned; untagged ones wait for the next refresh)")
         for s in info["top"]:
             shown = s.ai_headline or s.title
-            tag = "ai" if s.ai_headline else "  "
-            print(f"    {s.score:5.2f} {tag} {s.prefix:>7}  {shown[:68]}")
+            tag = s.tag if s.ai_headline else ""
+            print(f"    {s.score:5.2f} {tag:3} {s.prefix:>7}  {shown[:68]}")
     return 0
 
 

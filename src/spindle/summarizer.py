@@ -8,8 +8,9 @@ to manage.
 
 This runs **only during ``refresh``** (always detached from the user), in
 batched calls that run in parallel, and the result is cached on
-``Story.ai_headline`` — so a given story is cleaned once and never again, and
-render time stays free of any AI cost.
+``Story.ai_headline`` (and its 3-letter topic code on ``Story.tag``) — so a
+given story is cleaned once and never again, and render time stays free of any
+AI cost.
 
 The child session is locked down and kept fast: no tools, no MCP servers, no
 hooks (so it can't re-enter spindle's own SessionStart hook), no extended
@@ -36,6 +37,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .config import Config
+from .integration import headline_budget
 from .model import Story
 from .util import sanitize_text
 
@@ -57,17 +59,34 @@ MAX_PARALLEL_CALLS = 3
 
 _FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n(.*)\Z", re.S)
 _JSON_OBJ_RE = re.compile(r"\{.*\}", re.S)
+_TAG_RE = re.compile(r"[A-Z0-9]{3}")
+
+# Shown when the agent's tag isn't a 3-character code, so the story still
+# counts as cleaned instead of being re-sent every refresh.
+FALLBACK_TAG = "DEV"
+
+# The agent's verdict that a story isn't developer/tech news; never shown.
+OFF_TOPIC_TAG = "OFF"
+
+
+def needs_cleaning(story: Story) -> bool:
+    """True until the agent has given the story both a headline and a tag.
+
+    Stories cleaned before tags existed have a headline but no tag; they are
+    cleaned again once to get one.
+    """
+    return not (story.ai_headline or "").strip() or not story.tag
 
 
 def summarize_stories(stories: List[Story], cfg: Config, log: Logger = lambda _m: None) -> int:
-    """Fill in ``ai_headline`` for every story that doesn't have one yet.
+    """Fill in ``ai_headline`` and ``tag`` for every story missing either.
 
     Pending stories go to the agent in batches of ``[ai].batch_size``, several
     batches at once; a batch that fails is retried once. Returns the number of
     headlines newly cleaned.
     """
     ai = cfg.ai or {}
-    pending = [s for s in stories if not (s.ai_headline or "").strip()]
+    pending = [s for s in stories if needs_cleaning(s)]
     if not pending:
         return 0
 
@@ -84,7 +103,7 @@ def summarize_stories(stories: List[Story], cfg: Config, log: Logger = lambda _m
     batch_size = max(1, int(ai.get("batch_size", 20)))
     batches = [pending[i:i + batch_size] for i in range(0, len(pending), batch_size)]
 
-    def clean(batch: List[Story]) -> List[str]:
+    def clean(batch: List[Story]) -> List[Tuple[str, str]]:
         titles = [s.title for s in batch]
         return (_request_labels(titles, claude, agent, ai, cfg, log)
                 or _request_labels(titles, claude, agent, ai, cfg, log))
@@ -94,10 +113,12 @@ def summarize_stories(stories: List[Story], cfg: Config, log: Logger = lambda _m
 
     n = 0
     for batch, labels in zip(batches, results):
-        for story, label in zip(batch, labels):
-            clean = sanitize_text(label)
+        for story, (tag, headline) in zip(batch, labels):
+            # Claude Code appends "…" to every verb; a trailing one of our own doubles it.
+            clean = sanitize_text(headline).rstrip(" .…")
             if clean:
                 story.ai_headline = clean
+                story.tag = tag if _TAG_RE.fullmatch(tag) else FALLBACK_TAG
                 n += 1
     left = len(pending) - n
     log(f"ai: cleaned {n}/{len(pending)} headlines via {agent[0]} ({_model(ai, agent)})"
@@ -149,14 +170,15 @@ def _request_labels(
     ai: Dict[str, Any],
     cfg: Config,
     log: Logger,
-) -> List[str]:
-    """One batched headless-agent call. Returns labels in input order, or []."""
+) -> List[Tuple[str, str]]:
+    """One batched headless-agent call. Returns ``(tag, headline)`` pairs in
+    input order, or []."""
     name, meta, prompt = agent
     max_words = max(3, int(ai.get("max_words", 24)))
-    max_chars = max(8, int(cfg.max_title_width))
+    max_chars = headline_budget(cfg)
     numbered = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(titles))
     request = (
-        f"Limits: at most {max_words} words and {max_chars} characters per label. "
+        f"Limits: at most {max_words} words and {max_chars} characters per headline. "
         f"Rewrite each of these {len(titles)} headlines.\n\n"
         + numbered
     )
@@ -217,8 +239,9 @@ def _request_labels(
     return labels
 
 
-def parse_labels(text: str) -> Optional[List[str]]:
-    """Pull ``{"labels": [...]}`` out of the agent's reply.
+def parse_labels(text: str) -> Optional[List[Tuple[str, str]]]:
+    """Pull ``{"labels": [{"tag": ..., "headline": ...}, ...]}`` out of the
+    agent's reply as ``(tag, headline)`` pairs, the tag upper-cased.
 
     Models sometimes wrap JSON in a code fence or add a stray sentence despite
     instructions, so we take the outermost ``{...}`` span rather than trusting
@@ -234,4 +257,10 @@ def parse_labels(text: str) -> Optional[List[str]]:
     labels = parsed.get("labels") if isinstance(parsed, dict) else None
     if not isinstance(labels, list):
         return None
-    return [str(x) for x in labels]
+    pairs: List[Tuple[str, str]] = []
+    for entry in labels:
+        if not isinstance(entry, dict):
+            return None  # an unreadable entry would shift every later match
+        pairs.append((str(entry.get("tag") or "").strip().upper(),
+                      str(entry.get("headline") or "")))
+    return pairs
