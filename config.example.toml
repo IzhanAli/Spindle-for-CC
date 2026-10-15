@@ -7,8 +7,8 @@
 # The tool works with no config file at all.
 
 # ── Acquisition mode ───────────────────────────────────────────────────────
-# "scraper" → RSS/Atom + Hacker News + Reddit   (no keys needed)
-# "api"     → NewsAPI + GNews + DEV.to + Hacker News
+# "scraper" → RSS/Atom + Hacker News + Lobsters + Reddit   (no keys needed)
+# "api"     → NewsAPI + GNews + DEV.to + Hacker News + Lobsters
 # The two are mutually exclusive. Try one once with `/spindle:refresh api`.
 mode = "scraper"
 
@@ -25,6 +25,13 @@ display_separator = " • "   # between prefix and title, e.g. "IOS • SwiftUI 
 request_timeout_secs = 8.0
 max_feed_bytes       = 5000000
 user_agent           = "spindle/0.2 (+https://github.com/IzhanAli/Spindle-for-CC)"
+
+# Summaries for the Desktop story pane come from each story's feed. For a story
+# whose feed has none (most Hacker News, Lobsters and Reddit links), the
+# background refresh reads the top of the article's page once and keeps the
+# description the publisher wrote for link previews (og:description). That is a
+# request to the article's own site; set false to stick to the feeds.
+page_summaries = true
 
 # ── Locations ──────────────────────────────────────────────────────────────
 # cache_dir            = "~/.cache/spindle"
@@ -66,15 +73,15 @@ offtopic_penalty = 0.35
 # ── Scoring weights ─────────────────────────────────────────────────────────
 [weights]
 freshness     = 1.0
-signal        = 1.0   # HN points / Reddit score (log-scaled)
+signal        = 1.0   # HN / Lobsters points, Reddit score (log-scaled)
 dev_relevance = 0.8   # mobile / programming keyword match
 ai_relevance  = 0.6   # AI / LLM keyword match
 release       = 0.6   # SDK / framework release & changelog posts
 
 # ── Per-source weight (score multiplier, keyed by a story's `source`) ────────
 # A source not listed here is 1.0 (neutral). Raise one to make it lead the
-# ranking without silencing the rest. Sources: hackernews, reddit, rss (scraper
-# mode); newsapi, gnews, devto (api mode).
+# ranking without silencing the rest. Sources: hackernews, lobsters (both
+# modes); reddit, rss (scraper mode); newsapi, gnews, devto (api mode).
 [source_weights]
 devto = 2.0   # DEV.to leads the ranking
 
@@ -84,6 +91,13 @@ enabled    = true
 prefix     = "HN"
 min_points = 80
 limit      = 30
+
+# ── Lobsters (hottest stories, public JSON, no auth; both modes) ────────────
+[lobsters]
+enabled   = true
+prefix    = "LOB"
+min_score = 15
+limit     = 25                   # hottest.json holds 25 stories
 
 # ── Reddit (public hot.json, no auth) ───────────────────────────────────────
 [reddit]
@@ -161,6 +175,24 @@ url    = "https://medium.com/feed/flutter"
 [[rss]]
 prefix = "EXPO"
 url    = "https://expo.dev/changelog/rss.xml"
+[[rss]]
+prefix = "AND"
+url    = "https://androidstudio.googleblog.com/feeds/posts/default"   # Android Studio releases
+[[rss]]
+prefix = "IOS"
+url    = "https://www.avanderlee.com/feed/"                            # SwiftLee
+[[rss]]
+prefix = "SWIFT"
+url    = "https://www.swiftbysundell.com/rss"
+[[rss]]
+prefix = "DART"
+url    = "https://medium.com/feed/dartlang"
+[[rss]]
+prefix = "FIREBASE"
+url    = "https://firebase.blog/rss.xml"
+[[rss]]
+prefix = "WEB"
+url    = "https://webkit.org/feed/"                                     # Safari / WebKit
 
 # Broader developer landscape
 [[rss]]
@@ -187,3 +219,39 @@ url    = "https://aws.amazon.com/about-aws/whats-new/recent/feed/"
 [[rss]]
 prefix = "DB"
 url    = "https://www.postgresql.org/news.rss"
+[[rss]]
+prefix = "AI"
+url    = "https://blog.google/technology/ai/rss/"
+[[rss]]
+prefix = "AI"
+url    = "https://deepmind.google/blog/rss.xml"
+[[rss]]
+prefix = "GH"
+url    = "https://github.blog/feed/"
+[[rss]]
+prefix = "WEB"
+url    = "https://developer.chrome.com/static/blog/feed.xml"
+[[rss]]
+prefix = "WEB"
+url    = "https://vercel.com/atom"
+[[rss]]
+prefix = "JS"
+url    = "https://nodejs.org/en/feed/blog.xml"
+[[rss]]
+prefix = "TS"
+url    = "https://devblogs.microsoft.com/typescript/feed/"
+[[rss]]
+prefix = "PY"
+url    = "https://blog.python.org/feeds/posts/default"
+[[rss]]
+prefix = "DEVOPS"
+url    = "https://www.docker.com/blog/feed/"
+[[rss]]
+prefix = "CLOUD"
+url    = "https://blog.cloudflare.com/rss/"
+[[rss]]
+prefix = "DEV"
+url    = "https://engineering.fb.com/feed/"                             # Meta engineering
+[[rss]]
+prefix = "DEV"
+url    = "https://feed.infoq.com/"

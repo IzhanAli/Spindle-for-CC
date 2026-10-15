@@ -82,6 +82,7 @@ def build_verbs(pool: List[Story], cfg: Config) -> List[str]:
 # popularity signal counts, the source's own host).
 _VIA = {
     "hackernews": ("Hacker News", "points", "news.ycombinator.com"),
+    "lobsters": ("Lobsters", "points", "lobste.rs"),
     "reddit": ("Reddit", "upvotes", "reddit.com"),
     "devto": ("DEV", "reactions", "dev.to"),
 }

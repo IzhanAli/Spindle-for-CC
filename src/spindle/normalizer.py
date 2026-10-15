@@ -11,10 +11,11 @@ from __future__ import annotations
 from typing import List
 
 from .model import RawItem, Story
-from .util import excerpt, normalize_title, normalize_url, now_ts, sanitize_text, story_id
+from .util import excerpt, normalize_url, now_ts, sanitize_text, story_id
 
 _SOURCE_PREFIX = {
     "hackernews": "HN",
+    "lobsters": "LOB",
     "reddit": "RDT",
     "rss": "DEV",
     "newsapi": "NEWS",
@@ -37,9 +38,6 @@ def normalize(raw_items: List[RawItem], cfg) -> List[Story]:
         if not title:
             continue
         norm = normalize_url(r.url or "")
-        summary = excerpt(r.summary)
-        if normalize_title(summary) == normalize_title(title):
-            summary = ""               # a description that only repeats the title
         stories.append(Story(
             id=story_id(norm, title),
             prefix=_prefix_for(r),
@@ -52,6 +50,6 @@ def normalize(raw_items: List[RawItem], cfg) -> List[Story]:
             signal=float(r.signal or 0.0),
             kind=r.kind,
             topic=r.topic_hint,
-            summary=summary,
+            summary=excerpt(r.summary, title),
         ))
     return stories

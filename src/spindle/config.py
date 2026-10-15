@@ -109,6 +109,14 @@ DEFAULT_AI = {
     "timeout_secs": 120.0,    # per agent call
 }
 
+# Lobsters: a computing-focused link aggregator; keyless, so both modes use it.
+DEFAULT_LOBSTERS = {
+    "enabled": True,
+    "prefix": "LOB",
+    "min_score": 15,
+    "limit": 25,              # hottest.json holds 25 stories
+}
+
 DEFAULT_REDDIT = {
     "enabled": True,
     "prefix": "RDT",
@@ -135,6 +143,12 @@ DEFAULT_RSS: List[Dict[str, Any]] = [
     {"prefix": "RN",     "url": "https://reactnative.dev/blog/rss.xml"},
     {"prefix": "FLUTTER","url": "https://medium.com/feed/flutter"},
     {"prefix": "EXPO",   "url": "https://expo.dev/changelog/rss.xml"},
+    {"prefix": "AND",    "url": "https://androidstudio.googleblog.com/feeds/posts/default"},
+    {"prefix": "IOS",    "url": "https://www.avanderlee.com/feed/"},
+    {"prefix": "SWIFT",  "url": "https://www.swiftbysundell.com/rss"},
+    {"prefix": "DART",   "url": "https://medium.com/feed/dartlang"},
+    {"prefix": "FIREBASE", "url": "https://firebase.blog/rss.xml"},
+    {"prefix": "WEB",    "url": "https://webkit.org/feed/"},
     # --- Broader developer landscape ---
     {"prefix": "AI",     "url": "https://simonwillison.net/atom/everything/"},
     {"prefix": "AI",     "url": "https://huggingface.co/blog/feed.xml"},
@@ -144,13 +158,25 @@ DEFAULT_RSS: List[Dict[str, Any]] = [
     {"prefix": "DEVOPS", "url": "https://kubernetes.io/feed.xml"},
     {"prefix": "CLOUD",  "url": "https://aws.amazon.com/about-aws/whats-new/recent/feed/"},
     {"prefix": "DB",     "url": "https://www.postgresql.org/news.rss"},
+    {"prefix": "AI",     "url": "https://blog.google/technology/ai/rss/"},
+    {"prefix": "AI",     "url": "https://deepmind.google/blog/rss.xml"},
+    {"prefix": "GH",     "url": "https://github.blog/feed/"},
+    {"prefix": "WEB",    "url": "https://developer.chrome.com/static/blog/feed.xml"},
+    {"prefix": "WEB",    "url": "https://vercel.com/atom"},
+    {"prefix": "JS",     "url": "https://nodejs.org/en/feed/blog.xml"},
+    {"prefix": "TS",     "url": "https://devblogs.microsoft.com/typescript/feed/"},
+    {"prefix": "PY",     "url": "https://blog.python.org/feeds/posts/default"},
+    {"prefix": "DEVOPS", "url": "https://www.docker.com/blog/feed/"},
+    {"prefix": "CLOUD",  "url": "https://blog.cloudflare.com/rss/"},
+    {"prefix": "DEV",    "url": "https://engineering.fb.com/feed/"},
+    {"prefix": "DEV",    "url": "https://feed.infoq.com/"},
 ]
 
 
 @dataclass
 class Config:
-    # Acquisition layer: "scraper" (RSS + Hacker News + Reddit) or
-    # "api" (NewsAPI + GNews + DEV.to + Hacker News). Mutually exclusive.
+    # Acquisition layer: "scraper" (RSS + Hacker News + Lobsters + Reddit) or
+    # "api" (NewsAPI + GNews + DEV.to + Hacker News + Lobsters). Mutually exclusive.
     mode: str = "scraper"
 
     # ranking: score multiplier for off-topic stories (no dev/AI keyword match
@@ -168,6 +194,9 @@ class Config:
 
     # networking
     request_timeout_secs: float = 8.0
+    # Read the article page of a story whose feed gave no summary, once, for
+    # the description its publisher wrote for link previews (see pages.py).
+    page_summaries: bool = True
     max_feed_bytes: int = 5_000_000
     user_agent: str = "spindle/0.2 (+https://github.com/IzhanAli/Spindle-for-CC)"
     # Optional TLS CA bundle path. Leave empty to auto-detect (certifi / system
@@ -183,8 +212,10 @@ class Config:
     weights: Dict[str, float] = field(default_factory=lambda: dict(DEFAULT_WEIGHTS))
     source_weights: Dict[str, float] = field(
         default_factory=lambda: dict(DEFAULT_SOURCE_WEIGHTS))
-    # scraper-mode sources
+    # keyless aggregators, used in both modes
     hackernews: Dict[str, Any] = field(default_factory=lambda: dict(DEFAULT_HACKERNEWS))
+    lobsters: Dict[str, Any] = field(default_factory=lambda: dict(DEFAULT_LOBSTERS))
+    # scraper-mode sources
     reddit: Dict[str, Any] = field(default_factory=lambda: dict(DEFAULT_REDDIT))
     rss: List[Dict[str, Any]] = field(default_factory=lambda: [dict(x) for x in DEFAULT_RSS])
     # api-mode sources
@@ -299,6 +330,7 @@ def load(explicit_path: Optional[str] = None) -> Config:
         "ttl_minutes", "max_stories", "max_age_hours", "history_size",
         "pool_size", "max_title_width", "display_separator",
         "request_timeout_secs", "max_feed_bytes", "user_agent", "ca_bundle",
+        "page_summaries",
         "cache_dir", "claude_settings_path",
     )
     for key in scalars:
@@ -313,6 +345,8 @@ def load(explicit_path: Optional[str] = None) -> Config:
         cfg.source_weights = _merge_table(DEFAULT_SOURCE_WEIGHTS, data["source_weights"])
     if "hackernews" in data:
         cfg.hackernews = _merge_table(DEFAULT_HACKERNEWS, data["hackernews"])
+    if "lobsters" in data:
+        cfg.lobsters = _merge_table(DEFAULT_LOBSTERS, data["lobsters"])
     if "reddit" in data:
         cfg.reddit = _merge_table(DEFAULT_REDDIT, data["reddit"])
     if "rss" in data:                 # array-of-tables replaces the default list

@@ -38,9 +38,11 @@ the news never hides what Claude is doing.
 **Click the headline** in the Desktop app to read about the story. A pane
 opens with its summary, where it's from (`swift.org · Hacker News · 412
 points · 3h ago`), and a **Read the full story ↗** link at the bottom that
-opens it in your browser. The summary is the one the story's feed came with;
-for a link post with none (most Hacker News and Reddit links), the pane shows
-the original title instead.
+opens it in your browser. The summary is the one the story's feed came with.
+For a link post with none (most Hacker News, Lobsters and Reddit links), the
+background refresh reads the article's page once and keeps the description
+its publisher wrote for link previews. A story with neither shows its original
+title instead.
 
 ---
 
@@ -111,11 +113,10 @@ picks the turn's headline once, as the turn starts, from the same
 `spinnerVerbs` list; drawing the row only reads that pick. Clicking the
 headline looks its story up in the local cache (`spindle story`), and only
 then. The session-start hook takes a fraction of a second (a local settings
-write).
-Everything slow — fetching feeds, the headline agent — runs in a detached
-background process, including when you run `/spindle:refresh` or
-`/spindle:configure`. When it finishes, the spinner picks up the new headlines
-on its own.
+write). Everything slow — fetching feeds and article pages, the headline
+agent — runs in a detached background process, including when you run
+`/spindle:refresh` or `/spindle:configure`. When it finishes, the spinner
+picks up the new headlines on its own.
 
 **Is it going to mess with my Claude settings?**
 It writes one key, `spinnerVerbs`, and touches nothing else. Its hook lives in
@@ -123,9 +124,9 @@ the plugin, not your settings file. The Desktop mod only reads settings; it
 never writes them.
 
 **Do I need an API key?**
-No. Out of the box it reads free, public feeds (Hacker News, Reddit, and a set
-of RSS feeds), and the headline agent uses your existing Claude Code login.
-Keys are only for the optional news-API mode below.
+No. Out of the box it reads free, public feeds (Hacker News, Lobsters, Reddit,
+and a set of RSS feeds), and the headline agent uses your existing Claude Code
+login. Keys are only for the optional news-API mode below.
 
 **Does the headline agent use my Claude usage?**
 A little. A refresh sends only new, not-yet-cleaned headlines to Haiku, 20 per
@@ -142,14 +143,20 @@ at your next session start (at most every 5 minutes), and `/spindle:status`
 tells you how many are cleaned.
 
 **Where does the news come from? Can I pick my own topics?**
-By default: mobile + general dev feeds (iOS, Android, Swift, Kotlin, Flutter,
-React Native, plus AI/LLMs, Python, DevOps, and friends). Run
+By default: Hacker News, Lobsters, a set of developer subreddits, and about 30
+RSS feeds, mobile first (Android and Android Studio, Apple developer news,
+Swift, SwiftLee, Kotlin, Flutter, Dart, React Native, Expo, Firebase, WebKit),
+then the wider dev world (GitHub, Chrome, Vercel, Node.js, TypeScript, Python,
+Docker, Kubernetes, AWS, Cloudflare, Postgres, InfoQ, Meta engineering, and AI
+from Simon Willison, Hugging Face, OpenAI, Google and DeepMind). Run
 `/spindle:configure` and say what you want, or see [Make it yours](#make-it-yours).
 
 **Does it phone home?**
-No telemetry, ever. The only network it does is fetching public news feeds and
-the one headline-agent call, and only during a refresh — never while Claude is
-thinking.
+No telemetry, ever. Its network use is fetching public news feeds, the
+headline-agent call, and, for a story whose feed gave no summary, one read of
+the top of that article's page for its description. All of it happens only
+during a refresh, never while Claude is thinking. `page_summaries = false` in
+your config skips the article pages.
 
 **How do I turn it off?**
 Run `/spindle:uninstall`, then `/plugin uninstall spindle@spindle`, and start a
@@ -174,17 +181,20 @@ in its comments.
 - **`topics`** — the keywords spindle ranks news by. Point them at *your* stack.
 - **`[[rss]]`** — add or drop feeds. Only want Rust news? Only your favorite
   blogs? Rewrite the list.
-- **`[hackernews]` / `[reddit]`** — tune score thresholds or swap subreddits.
+- **`[hackernews]` / `[lobsters]` / `[reddit]`** — tune score thresholds,
+  swap subreddits, or set `enabled = false` to drop one.
+- **`page_summaries`** — `false` stops spindle reading article pages for the
+  Desktop story pane's summaries.
 - **`pool_size`** — how many headlines are in play each session (default 14).
 - **`[ai]`** — tune the headline agent: `model` (defaults to haiku),
   `max_words`, `batch_size`, and `claude_bin` if `claude` isn't on your `PATH`.
   Cleaning itself can't be turned off.
 
 **More sources via news APIs.** Set `mode = "api"` to pull from NewsAPI + GNews +
-DEV.to instead of the scraper feeds. NewsAPI and GNews want free keys; put them
-in `~/.config/spindle/.env` (see `.env.example`). DEV.to and Hacker News don't
-need keys. spindle stays under each API's free-tier daily limit automatically,
-so you won't blow through a quota.
+DEV.to instead of the RSS feeds and Reddit. NewsAPI and GNews want free keys;
+put them in `~/.config/spindle/.env` (see `.env.example`). DEV.to, Hacker News
+and Lobsters don't need keys. spindle stays under each API's free-tier daily
+limit automatically, so you won't blow through a quota.
 
 ---
 
@@ -246,6 +256,7 @@ Spindle-for-CC/
     ├── util.py                 # width-aware truncate, summaries, url norm, similarity
     ├── http.py                 # conditional GET, never raises
     ├── summarizer.py           # headline cleaning via the headline-writer agent
+    ├── pages.py                # article-page descriptions for stories with no summary
     ├── storage.py              # atomic JSON cache
     ├── history.py              # rotation window
     ├── normalizer.py           # RawItem → Story
@@ -257,6 +268,7 @@ Spindle-for-CC/
         ├── __init__.py         # aggregation + FetchContext
         ├── common.py           # shared fetch helpers
         ├── hn.py               # Hacker News (Algolia; both modes)
+        ├── lobsters.py         # Lobsters (hottest.json; both modes)
         ├── api/                # api mode: keyed sources
         │   ├── newsapi.py
         │   ├── gnews.py

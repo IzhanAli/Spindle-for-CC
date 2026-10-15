@@ -4,11 +4,12 @@ gathered.
 The pipeline calls :func:`collect` and never learns which backend ran. The
 backend is chosen by ``cfg.mode``:
 
-    "scraper"  → RSS/Atom + Hacker News + Reddit          (fetcher.scraper)
-    "api"      → NewsAPI + GNews + DEV.to + Hacker News    (fetcher.api)
+    "scraper"  → RSS/Atom + Hacker News + Lobsters + Reddit          (fetcher.scraper)
+    "api"      → NewsAPI + GNews + DEV.to + Hacker News + Lobsters    (fetcher.api)
 
-The two are mutually exclusive. Hacker News is a keyless public API and belongs
-to both groups, so it lives at this level (``fetcher.hn``) and is shared.
+The two are mutually exclusive. Hacker News and Lobsters are keyless public
+APIs and belong to both groups, so they live at this level (``fetcher.hn``,
+``fetcher.lobsters``) and are shared.
 """
 
 from __future__ import annotations
@@ -26,8 +27,8 @@ def collect(cfg, meta: Dict[str, Any], log: Logger = lambda _m: None) -> List[Ra
     mode = (cfg.mode or "scraper").strip().lower()
     if mode == "api":
         from .api import collect as collect_api
-        log("mode: api (NewsAPI + GNews + DEV.to + Hacker News)")
+        log("mode: api (NewsAPI + GNews + DEV.to + Hacker News + Lobsters)")
         return collect_api(ctx, cfg, log)
     from .scraper import collect as collect_scraper
-    log("mode: scraper (RSS + Hacker News + Reddit)")
+    log("mode: scraper (RSS + Hacker News + Lobsters + Reddit)")
     return collect_scraper(ctx, cfg, log)

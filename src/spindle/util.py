@@ -89,18 +89,21 @@ _SENTENCE_END_RE = re.compile(r"[.!?…][\"'”’)\]]?(?=\s)")
 _TAG_GAP_RE = re.compile(r"\s+(?=[,.;:!?)\]])|(?<=[(\[])\s+")
 
 
-def excerpt(text: Optional[str], limit: int = EXCERPT_CHARS) -> str:
-    """A feed's description as a short plain-text summary, or "".
+def excerpt(text: Optional[str], title: str = "", limit: int = EXCERPT_CHARS) -> str:
+    """A story's description as a short plain-text summary, or "".
 
     Cleaned like a title (no markup, entities or control chars, one line),
     then cut to ``limit`` characters at the last sentence end, or failing that
-    at a word, with an ellipsis.
+    at a word, with an ellipsis. A description that only repeats ``title``
+    gives "".
     """
     if not text:
         return ""
     text = sanitize_text(_SCRIPT_RE.sub(" ", text))
     text = _TAG_GAP_RE.sub("", _WP_FOOTER_RE.sub("", text))
     if len(text.split()) < _EXCERPT_MIN_WORDS:
+        return ""
+    if title and normalize_title(text) == normalize_title(title):
         return ""
     if len(text) <= limit:
         return text

@@ -14,11 +14,10 @@ context (if it already has certs) → ``certifi`` → a known system bundle.
 
 from __future__ import annotations
 
-import gzip
-import io
 import json
 import os
 import ssl
+import zlib
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 from urllib import error, request
@@ -79,6 +78,7 @@ class HttpResult:
     etag: Optional[str] = None
     last_modified: Optional[str] = None
     final_url: Optional[str] = None
+    content_type: Optional[str] = None
     error: Optional[str] = None
 
     @property
@@ -122,15 +122,18 @@ def fetch(
                 raw = raw[:max_bytes]
             if (resp.headers.get("Content-Encoding") or "").lower() == "gzip":
                 try:
-                    raw = gzip.GzipFile(fileobj=io.BytesIO(raw)).read()
-                except OSError:
-                    pass  # not actually gzipped / truncated — use as-is
+                    # A body cut at max_bytes is a cut gzip stream: inflate
+                    # what arrived (GzipFile raises EOFError on a cut one).
+                    raw = zlib.decompressobj(16 + zlib.MAX_WBITS).decompress(raw)
+                except zlib.error:
+                    pass  # not actually gzipped — use as-is
             return HttpResult(
                 status=getattr(resp, "status", 200) or 200,
                 body=raw,
                 etag=resp.headers.get("ETag"),
                 last_modified=resp.headers.get("Last-Modified"),
                 final_url=resp.geturl(),
+                content_type=resp.headers.get("Content-Type"),
             )
     except error.HTTPError as e:
         if e.code == 304:                 # urllib surfaces 304 as an "error"

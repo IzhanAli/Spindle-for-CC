@@ -76,7 +76,8 @@ def _cmd_status(cfg) -> int:
     print(f"mode            {info['mode']}")
     print(f"cache dir       {info['cache_dir']}")
     print(f"settings        {info['settings_path']}")
-    print(f"stories cached  {info['story_count']} ({info['cleaned_count']} cleaned)")
+    print(f"stories cached  {info['story_count']} ({info['cleaned_count']} cleaned, "
+          f"{info['summary_count']} with a summary)")
     state = "refreshing now" if info["refreshing"] else ("STALE" if info["stale"] else "fresh")
     print(f"last refresh    {_fmt_age(info['age_secs'])}  ({state})")
     print(f"rotation        {info['history_shown']} shown, epoch {info['history_epoch']}")

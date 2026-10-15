@@ -193,7 +193,7 @@ export const register: Register = on => {
           ) : (
             <Box flexDirection="column">
               {card.title !== card.headline && <Text italic wrap="wrap">{card.title}</Text>}
-              <Text dimColor wrap="wrap">No summary came with this story in its feed.</Text>
+              <Text dimColor wrap="wrap">No summary came with this story.</Text>
             </Box>
           )}
           {href !== null && <Link href={href}>Read the full story ↗</Link>}

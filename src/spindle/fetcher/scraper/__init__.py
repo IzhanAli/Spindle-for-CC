@@ -1,4 +1,4 @@
-"""Scraper backend: RSS/Atom feeds + Hacker News (Algolia) + Reddit.
+"""Scraper backend: RSS/Atom feeds + Hacker News (Algolia) + Lobsters + Reddit.
 
 No API keys. Everything is a public feed or public JSON endpoint.
 """
@@ -13,7 +13,7 @@ from ..common import FetchContext, Logger, safe
 
 def collect(ctx: FetchContext, cfg, log: Logger) -> List[RawItem]:
     from . import rss, reddit
-    from .. import hn                    # shared, keyless HN provider
+    from .. import hn, lobsters          # shared, keyless aggregators
 
     items: List[RawItem] = []
     items += safe("rss", rss.fetch, ctx, cfg, log)
@@ -21,4 +21,6 @@ def collect(ctx: FetchContext, cfg, log: Logger) -> List[RawItem]:
         items += safe("reddit", reddit.fetch, ctx, cfg, log)
     if cfg.hackernews.get("enabled", True):
         items += safe("hackernews", hn.fetch, ctx, cfg, log)
+    if cfg.lobsters.get("enabled", True):
+        items += safe("lobsters", lobsters.fetch, ctx, cfg, log)
     return items
