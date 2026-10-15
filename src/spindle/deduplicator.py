@@ -5,7 +5,9 @@ Two passes:
   2. Near-duplicate: high title similarity (same story syndicated across feeds).
 
 Input is expected to be already scored; we process highest-score-first so the
-survivor of any collision is the best version. A token inverted index keeps the
+survivor of any collision is the best version. A survivor without a summary
+takes the first one a duplicate carries (an HN link post, say, gets the
+article's own description from an RSS feed). A token inverted index keeps the
 near-duplicate pass close to linear in practice despite the pairwise check.
 """
 
@@ -26,11 +28,16 @@ def deduplicate(stories: List[Story], sim_threshold: float = SIM_THRESHOLD) -> L
     ordered = sorted(stories, key=lambda s: s.score, reverse=True)
 
     kept: List[Story] = []
-    seen_url: set = set()
+    by_url: Dict[str, int] = {}
     token_index: Dict[str, List[int]] = defaultdict(list)
 
+    def absorb(i: int, dup: Story) -> None:
+        if not kept[i].summary and dup.summary:
+            kept[i].summary = dup.summary
+
     for s in ordered:
-        if s.norm_url and s.norm_url in seen_url:
+        if s.norm_url and s.norm_url in by_url:
+            absorb(by_url[s.norm_url], s)
             continue
 
         tokens = title_tokens(s.title)
@@ -38,14 +45,16 @@ def deduplicate(stories: List[Story], sim_threshold: float = SIM_THRESHOLD) -> L
         for tok in tokens:
             candidates.update(token_index.get(tok, ()))
 
-        if any(title_similarity(s.title, kept[i].title) >= sim_threshold
-               for i in candidates):
+        same = next((i for i in sorted(candidates)
+                     if title_similarity(s.title, kept[i].title) >= sim_threshold), None)
+        if same is not None:
+            absorb(same, s)
             continue
 
         idx = len(kept)
         kept.append(s)
         if s.norm_url:
-            seen_url.add(s.norm_url)
+            by_url[s.norm_url] = idx
         for tok in tokens:
             token_index[tok].append(idx)
 

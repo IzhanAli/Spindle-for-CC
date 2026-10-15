@@ -32,6 +32,7 @@ Logger = Callable[[str], None]
 LOCK_TTL = 600  # seconds; a lock older than this is considered stale (covers
                 # feed fetches plus a few headline-agent calls and retries)
 CLEAN_RETRY_SECS = 300  # min gap between session-start retries of held-back stories
+META_VERSION = 2        # 2: stories keep their feed's summary
 
 
 # --------------------------------------------------------------------------- #
@@ -111,6 +112,12 @@ def refresh(cfg: Config, log: Logger = lambda _m: None) -> Dict[str, Any]:
         now = now_ts()
         meta = storage.load_meta(cfg.cache_dir)
         existing = storage.load_stories(cfg.cache_dir)
+        if int(meta.get("version", 1)) < META_VERSION:
+            # Stories cached before summaries were kept have none, and a feed
+            # that answers 304 would never resend them: fetch every feed in
+            # full once, and the merge below fills them in.
+            meta["feeds"] = {}
+            meta["version"] = META_VERSION
 
         raw = collect(cfg, meta, log)
         fetched = normalize(raw, cfg)
@@ -133,6 +140,8 @@ def refresh(cfg: Config, log: Logger = lambda _m: None) -> Dict[str, Any]:
             # freshly-normalized `s` always has an empty ai_headline).
             if not keep.ai_headline:
                 keep.ai_headline = other.ai_headline
+            if not keep.summary:
+                keep.summary = other.summary
             merged[s.id] = keep
         stories = list(merged.values())
 

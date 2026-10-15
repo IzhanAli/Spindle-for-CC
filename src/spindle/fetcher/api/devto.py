@@ -52,5 +52,6 @@ def fetch(ctx, cfg, log) -> List[RawItem]:
                 published_ts=parse_date(a.get("published_timestamp")),
                 prefix_hint=prefix,
                 topic_hint=tag,
+                summary=a.get("description"),
             ))
     return items

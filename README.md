@@ -35,6 +35,13 @@ In the Desktop app the headline shows while Claude thinks or writes. When the
 row is describing a tool step, like `Editing app.ts`, that step stays in view:
 the news never hides what Claude is doing.
 
+**Click the headline** in the Desktop app to read about the story. A pane
+opens with its summary, where it's from (`swift.org · Hacker News · 412
+points · 3h ago`), and a **Read the full story ↗** link at the bottom that
+opens it in your browser. The summary is the one the story's feed came with;
+for a link post with none (most Hacker News and Reddit links), the pane shows
+the original title instead.
+
 ---
 
 ## Install it
@@ -69,9 +76,9 @@ Installing the plugin gave Claude Code:
 2. A **`headline-writer` agent** that cleans every feed title into a tight
    spinner label. Only cleaned headlines ever reach the spinner.
 3. A few **`/spindle:` commands** (below).
-4. A **mod** (`hooks/spinner.ts`) that shows the same headlines in the Desktop
+4. A **mod** (`hooks/spinner.tsx`) that shows the same headlines in the Desktop
    app's spinner row, which doesn't read the `spinnerVerbs` setting the
-   terminal uses.
+   terminal uses, and opens a story's summary when you click its headline.
 
  The news cache lives in `~/.cache/spindle`.
 
@@ -101,8 +108,10 @@ next time it pauses to think, the spinner shows news instead of a random word.
 No, and no. While Claude thinks, *nothing of spindle's is running* — Claude is
 just reading a few words it loaded at startup. In the Desktop app, the mod
 picks the turn's headline once, as the turn starts, from the same
-`spinnerVerbs` list; drawing the row only reads that pick. The
-session-start hook takes a fraction of a second (a local settings write).
+`spinnerVerbs` list; drawing the row only reads that pick. Clicking the
+headline looks its story up in the local cache (`spindle story`), and only
+then. The session-start hook takes a fraction of a second (a local settings
+write).
 Everything slow — fetching feeds, the headline agent — runs in a detached
 background process, including when you run `/spindle:refresh` or
 `/spindle:configure`. When it finishes, the spinner picks up the new headlines
@@ -219,7 +228,7 @@ Spindle-for-CC/
 │   └── marketplace.json        # this repo is its own marketplace
 ├── hooks/
 │   ├── hooks.json              # SessionStart → spindle session-start; loads the mod
-│   └── spinner.ts              # mod: headlines in the Desktop app's spinner row
+│   └── spinner.tsx             # mod: Desktop spinner headlines; story pane on click
 ├── types/index.d.ts            # the mod's $.state contract
 ├── tests/spinner.test.ts       # the mod's tests (`claude plugin test .`)
 ├── tsconfig.json               # type-checks the mod (`tsc -p .`)
@@ -234,7 +243,7 @@ Spindle-for-CC/
     ├── __main__.py             # CLI entry point
     ├── config.py               # TOML load + defaults
     ├── model.py                # RawItem / Story dataclasses
-    ├── util.py                 # width-aware truncate, url norm, similarity
+    ├── util.py                 # width-aware truncate, summaries, url norm, similarity
     ├── http.py                 # conditional GET, never raises
     ├── summarizer.py           # headline cleaning via the headline-writer agent
     ├── storage.py              # atomic JSON cache
@@ -242,7 +251,7 @@ Spindle-for-CC/
     ├── normalizer.py           # RawItem → Story
     ├── deduplicator.py         # url + title-similarity dedup
     ├── scorer.py               # weighted ranking
-    ├── integration.py          # spinnerVerbs merge into settings.json
+    ├── integration.py          # spinnerVerbs merge into settings.json; story card
     ├── pipeline.py             # refresh / sync / session-start orchestration
     └── fetcher/
         ├── __init__.py         # aggregation + FetchContext
@@ -277,7 +286,9 @@ tsc -p .                   # type-check, once the checkout has been loaded
 ```
 
 The CLI works on its own too: `sh bin/run status | refresh --sync -v |
-clean -v | reset | uninstall`.
+clean -v | reset | uninstall`. `sh bin/run story "<headline>"` prints the
+cached story behind a spinner headline as JSON: what the Desktop story pane
+shows.
 
 Config discovery order: `--config PATH` → `$SPINDLE_CONFIG` →
 `$SPINDLE_HOME/config.toml` → `~/.config/spindle/config.toml`.

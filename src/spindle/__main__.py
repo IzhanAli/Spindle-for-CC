@@ -8,6 +8,9 @@
     spindle sync              advance the pool and write settings (local)
     spindle session-start     SessionStart hook entry point (sync + maybe refresh)
     spindle status            show cache & integration status
+    spindle story HEADLINE    print the cached story behind a spinner headline,
+                              as JSON (null when none): what the Desktop mod's
+                              story card shows
     spindle reset [--all]     reset rotation history (and optionally the cache)
     spindle uninstall         remove spinnerVerbs, the cache, and pre-plugin leftovers
     spindle version
@@ -18,6 +21,7 @@ Global flags (--config, --mode, -v) work before or after the subcommand.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import sys
@@ -92,6 +96,12 @@ def _cmd_status(cfg) -> int:
     return 0
 
 
+def _cmd_story(cfg, headline) -> int:
+    # ASCII-escaped, so no console codepage can choke on a headline.
+    print(json.dumps(integration.story_card(cfg, headline)))
+    return 0
+
+
 def _cmd_reset(cfg, reset_all) -> int:
     storage.ensure_dir(cfg.cache_dir)
     storage.save_history(cfg.cache_dir, {"shown": [], "epoch": 0})
@@ -156,6 +166,9 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("sync", parents=[common], help="advance the pool and write settings")
     sub.add_parser("session-start", parents=[common], help="SessionStart hook entry point")
     sub.add_parser("status", parents=[common], help="show cache & integration status")
+    p_story = sub.add_parser("story", parents=[common],
+                             help="print the cached story behind a spinner headline as JSON")
+    p_story.add_argument("headline", help="the headline as the spinner shows it")
     p_reset = sub.add_parser("reset", parents=[common], help="reset rotation history")
     p_reset.add_argument("--all", action="store_true", default=_SUPPRESS,
                          help="also clear the story cache")
@@ -210,6 +223,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
         if cmd == "status":
             return _cmd_status(cfg)
+        if cmd == "story":
+            return _cmd_story(cfg, args.headline)
         if cmd == "reset":
             return _cmd_reset(cfg, getattr(args, "all", False))
         if cmd == "uninstall":

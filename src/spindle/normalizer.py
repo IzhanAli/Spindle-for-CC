@@ -1,7 +1,8 @@
 """Turn raw source items into clean, uniform ``Story`` records.
 
-Responsibilities: sanitize the title, canonicalize the URL, assign a stable id
-and a display prefix, and stamp fetch time. Scoring and deduplication happen in
+Responsibilities: sanitize the title, trim the feed's description to a short
+summary, canonicalize the URL, assign a stable id and a display prefix, and
+stamp fetch time. Scoring and deduplication happen in
 later stages.
 """
 
@@ -10,7 +11,7 @@ from __future__ import annotations
 from typing import List
 
 from .model import RawItem, Story
-from .util import normalize_url, now_ts, sanitize_text, story_id
+from .util import excerpt, normalize_title, normalize_url, now_ts, sanitize_text, story_id
 
 _SOURCE_PREFIX = {
     "hackernews": "HN",
@@ -36,6 +37,9 @@ def normalize(raw_items: List[RawItem], cfg) -> List[Story]:
         if not title:
             continue
         norm = normalize_url(r.url or "")
+        summary = excerpt(r.summary)
+        if normalize_title(summary) == normalize_title(title):
+            summary = ""               # a description that only repeats the title
         stories.append(Story(
             id=story_id(norm, title),
             prefix=_prefix_for(r),
@@ -48,5 +52,6 @@ def normalize(raw_items: List[RawItem], cfg) -> List[Story]:
             signal=float(r.signal or 0.0),
             kind=r.kind,
             topic=r.topic_hint,
+            summary=summary,
         ))
     return stories

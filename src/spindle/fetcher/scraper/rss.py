@@ -40,6 +40,8 @@ def parse_feed(body: bytes, prefix: Optional[str], topic: Optional[str] = None,
 
         title = ""
         link = ""
+        summary = ""
+        content = ""
         published: Optional[int] = None
 
         for child in el:
@@ -56,6 +58,10 @@ def parse_feed(body: bytes, prefix: Optional[str], topic: Optional[str] = None,
                     link = child.text
             elif name in ("pubdate", "published", "updated", "date") and published is None:
                 published = parse_date(child.text)
+            elif name in ("description", "summary") and not summary:
+                summary = _text(child)
+            elif name in ("content", "encoded") and not content:   # content:encoded
+                content = _text(child)
 
         title = sanitize_text(title)
         if not title:
@@ -68,6 +74,7 @@ def parse_feed(body: bytes, prefix: Optional[str], topic: Optional[str] = None,
             prefix_hint=prefix,
             topic_hint=topic,
             published_ts=published,
+            summary=summary or content,
         ))
         if len(items) >= MAX_ITEMS_PER_FEED:
             break

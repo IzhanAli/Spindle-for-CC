@@ -1,7 +1,7 @@
 {
   "name": "spindle",
   "displayName": "spindle",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Turns Claude Code's thinking spinner into a live developer-news ticker, in the CLI and the Desktop app. Headlines are cached locally and tightened by a Claude Code agent — no API keys.",
   "author": {
     "name": "Izhan Ali",

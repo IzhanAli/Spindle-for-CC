@@ -48,5 +48,6 @@ def fetch(ctx, cfg, log) -> List[RawItem]:
                 published_ts=int(post.get("created_utc") or 0) or None,
                 prefix_hint=prefix,
                 topic_hint=sub,
+                summary=post.get("selftext_html") or post.get("selftext"),
             ))
     return items

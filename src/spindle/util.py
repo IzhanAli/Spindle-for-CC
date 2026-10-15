@@ -78,6 +78,42 @@ def sanitize_text(text: Optional[str]) -> str:
     return text.strip()
 
 
+EXCERPT_CHARS = 480        # longest summary kept per story
+_EXCERPT_MIN_WORDS = 4     # "Comments", "Read more" and the like aren't summaries
+_SCRIPT_RE = re.compile(r"<(script|style)\b.*?</\1\s*>", re.I | re.S)
+# WordPress appends this to every feed description.
+_WP_FOOTER_RE = re.compile(r"\s*The post .{1,300}? appeared first on .{1,200}$", re.S)
+_SENTENCE_END_RE = re.compile(r"[.!?…][\"'”’)\]]?(?=\s)")
+# The gaps stripping an inline tag leaves: "<b>Swift 6.2</b>, which" reads
+# "Swift 6.2 , which", and "(<i>truly</i>)" reads "( truly )".
+_TAG_GAP_RE = re.compile(r"\s+(?=[,.;:!?)\]])|(?<=[(\[])\s+")
+
+
+def excerpt(text: Optional[str], limit: int = EXCERPT_CHARS) -> str:
+    """A feed's description as a short plain-text summary, or "".
+
+    Cleaned like a title (no markup, entities or control chars, one line),
+    then cut to ``limit`` characters at the last sentence end, or failing that
+    at a word, with an ellipsis.
+    """
+    if not text:
+        return ""
+    text = sanitize_text(_SCRIPT_RE.sub(" ", text))
+    text = _TAG_GAP_RE.sub("", _WP_FOOTER_RE.sub("", text))
+    if len(text.split()) < _EXCERPT_MIN_WORDS:
+        return ""
+    if len(text) <= limit:
+        return text
+    head = text[:limit]
+    ends = [m.end() for m in _SENTENCE_END_RE.finditer(head)]
+    if ends and ends[-1] >= limit // 3:
+        return head[:ends[-1]]
+    cut = head.rfind(" ")
+    if cut > limit // 2:
+        head = head[:cut]
+    return head.rstrip(" ,;:-–—") + "…"
+
+
 def char_width(ch: str) -> int:
     """Display columns for a single character (0/1/2), Unicode-aware."""
     if unicodedata.combining(ch):
