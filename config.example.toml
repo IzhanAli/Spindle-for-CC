@@ -18,8 +18,8 @@ max_stories      = 60       # cap on stories kept in the cache
 max_age_hours    = 72       # drop stories older than this
 history_size     = 800      # how many shown-story ids to remember (rotation)
 pool_size        = 14       # verbs placed into settings per session
-max_title_width  = 90       # display columns budget for the whole verb (prefix + title)
-display_separator = " • "   # between prefix and title, e.g. "IOS • SwiftUI …"
+max_title_width  = 90       # display columns budget for the whole verb (tag + headline)
+display_separator = ": "    # between topic tag and headline, e.g. "IOS: SwiftUI …"
 
 # ── Networking ─────────────────────────────────────────────────────────────
 request_timeout_secs = 8.0
@@ -54,7 +54,8 @@ max_words    = 24                         # target length of each label
 batch_size   = 20                         # headlines per agent call (run in parallel)
 timeout_secs = 120.0                      # per agent call
 
-# ── Topics (used for relevance scoring) ─────────────────────────────────────
+# ── Topics (relevance scoring; NewsAPI/GNews titles matching no topic or ────
+#    built-in dev/AI keyword are dropped as off topic)
 topics = [
   "Mobile", "iOS", "Android", "Swift", "SwiftUI", "Kotlin",
   "Jetpack Compose", "Flutter", "React Native", "Expo",
@@ -62,13 +63,6 @@ topics = [
   "AI", "LLMs", "Programming", "Open Source", "DevOps",
   "Python", "Java", "JavaScript", "Cloud", "Databases",
 ]
-
-# ── Ranking: off-topic penalty ──────────────────────────────────────────────
-# Stories matching no developer/AI keyword (and not a release) are general-
-# interest noise in a dev-news tool — think front-page Hacker News chatter. Their
-# score is multiplied by this factor so freshness + popularity alone can't float
-# them into the spinner. 1.0 = no penalty; lower = harsher. 0.0 = effectively drop.
-offtopic_penalty = 0.35
 
 # ── Scoring weights ─────────────────────────────────────────────────────────
 [weights]
@@ -128,6 +122,7 @@ enabled     = true
 prefix      = "NEWS"
 api_key     = ""                 # or $NEWSAPI_KEY
 query       = ""                 # empty → derived from [topics]
+search_in   = "title,description" # adding "content" matches boilerplate on unrelated stories
 language    = "en"
 page_size   = 30
 daily_limit = 100                # NewsAPI free tier

@@ -3,7 +3,7 @@
 There is intentionally **no render-time code**. Claude Code renders the spinner
 itself; we only supply the word list via the officially supported settings key:
 
-    "spinnerVerbs": { "mode": "replace", "verbs": [ "AI • …", "IOS • …", … ] }
+    "spinnerVerbs": { "mode": "replace", "verbs": [ "LLM: …", "IOS: …", … ] }
 
 Claude picks one verb at random per thinking episode and composes the rest of
 the line — elapsed time, token count, spinner, effort, colors, ANSI — exactly
@@ -41,26 +41,40 @@ from . import storage
 from .config import Config
 from .model import Story
 from .storage import read_json
-from .util import now_ts, truncate_width
+from .util import display_width, now_ts, truncate_width
 
 HOOK_MARKER = "spindle"          # identifies a legacy hook entry as ours
 HOOK_SUBCOMMAND = "session-start"
 
 
+TAG_WIDTH = 3   # the agent's topic tags are 3-character codes ("IOS", "LLM")
+
+
+def headline_budget(cfg: Config) -> int:
+    """Display columns left for the headline once the topic tag is placed."""
+    used = TAG_WIDTH + display_width(cfg.display_separator)
+    return max(8, int(cfg.max_title_width) - used)
+
+
 def build_display(story: Story, cfg: Config) -> str:
     """Compose the single-line verb from the cleaned headline, width-capped.
 
-    The source tag (``prefix``) is intentionally *not* shown — the whole width
-    budget goes to the headline itself. Only the agent-cleaned ``ai_headline``
-    is ever rendered; a story without one yields "" and is skipped, so a raw
-    feed title can never reach the spinner. The agent is asked to fit the
-    width budget, so the cap here is only a safety net.
+    The verb is topic tag + ``display_separator`` + headline, e.g.
+    "IOS: Thunderbird for iOS". The tag is what tells the reader the line is
+    a headline: the spinner row otherwise reads as Claude describing its own
+    work. A story cleaned before tags existed shows its bare headline until
+    the next clean tags it. Only the agent-cleaned ``ai_headline`` is ever
+    rendered; a story without one yields "" and is skipped, so a raw feed
+    title can never reach the spinner. The agent is asked to fit
+    ``headline_budget``, so the cap here is only a safety net.
 
     No trailing ellipsis — Claude Code appends "…" after every verb, which also
     serves as the truncation indicator.
     """
-    budget = max(8, int(cfg.max_title_width))
-    return truncate_width((story.ai_headline or "").strip(), budget)
+    headline = truncate_width((story.ai_headline or "").strip(), headline_budget(cfg))
+    if not headline or not story.tag:
+        return headline
+    return f"{story.tag}{cfg.display_separator}{headline}"
 
 
 def build_verbs(pool: List[Story], cfg: Config) -> List[str]:

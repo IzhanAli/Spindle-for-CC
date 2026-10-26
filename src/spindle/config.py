@@ -72,6 +72,7 @@ DEFAULT_NEWSAPI = {
     "prefix": "NEWS",
     "api_key": "",            # or $NEWSAPI_KEY
     "query": "",              # empty → built from `topics`
+    "search_in": "title,description",  # not "content": body text matches boilerplate
     "language": "en",
     "page_size": 30,
     "daily_limit": 100,       # free-tier cap (requests/day); we never exceed it
@@ -179,10 +180,6 @@ class Config:
     # "api" (NewsAPI + GNews + DEV.to + Hacker News + Lobsters). Mutually exclusive.
     mode: str = "scraper"
 
-    # ranking: score multiplier for off-topic stories (no dev/AI keyword match
-    # and not a release). Lower = harsher demotion of general-interest noise.
-    offtopic_penalty: float = 0.35
-
     # cache / rendering knobs
     ttl_minutes: int = 30
     max_stories: int = 60
@@ -190,7 +187,7 @@ class Config:
     history_size: int = 800
     pool_size: int = 14            # how many verbs are placed for a session
     max_title_width: int = 90      # display columns budget for the whole verb
-    display_separator: str = " • "
+    display_separator: str = ": "   # between topic tag and headline
 
     # networking
     request_timeout_secs: float = 8.0
@@ -326,7 +323,7 @@ def load(explicit_path: Optional[str] = None) -> Config:
         data = _TOML_LOADS(fh.read())
 
     scalars = (
-        "mode", "offtopic_penalty",
+        "mode",
         "ttl_minutes", "max_stories", "max_age_hours", "history_size",
         "pool_size", "max_title_width", "display_separator",
         "request_timeout_secs", "max_feed_bytes", "user_agent", "ca_bundle",

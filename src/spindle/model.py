@@ -49,6 +49,8 @@ class Story:
     score: float = 0.0
     ai_headline: str = ""             # agent-cleaned headline (see summarizer);
                                       # empty == not cleaned yet, never displayed
+    tag: str = ""                     # agent's 3-letter topic code ("IOS", "LLM"),
+                                      # shown before the headline
     summary: str = ""                 # plain text (see util.excerpt): the feed's
                                       # own, else the article page's (see pages)
     page_checked: bool = False        # the article page was read for a summary

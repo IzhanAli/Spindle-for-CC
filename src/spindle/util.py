@@ -138,7 +138,7 @@ def truncate_width(text: str, max_width: int) -> str:
 
     No ellipsis is appended: Claude Code renders a trailing "…" after every
     spinner verb, and that "…" doubles as our truncation indicator — matching
-    the desired output exactly (e.g. "AI • Anthropic releases MCP v2…").
+    the desired output exactly (e.g. "LLM: Anthropic releases MCP v2…").
     """
     if max_width <= 0:
         return ""
