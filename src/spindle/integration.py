@@ -22,6 +22,11 @@ upgrade path; this is the fallback.)
 
 Writes are atomic, pretty-printed, and *only happen when content changes*, so we
 never churn the user's settings file.
+
+The Desktop app's mod (``hooks/spinner.tsx``) reads the same verbs and draws
+the turn's headline as a button. A click runs ``spindle story``, which looks up
+the story behind it here (``story_card``) for the card the mod opens: its
+summary, where it's from, and the link to read it.
 """
 
 from __future__ import annotations
@@ -29,12 +34,14 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlsplit
 
+from . import storage
 from .config import Config
 from .model import Story
 from .storage import read_json
-from .util import display_width, truncate_width
+from .util import display_width, now_ts, truncate_width
 
 HOOK_MARKER = "spindle"          # identifies a legacy hook entry as ours
 HOOK_SUBCOMMAND = "session-start"
@@ -80,6 +87,73 @@ def build_verbs(pool: List[Story], cfg: Config) -> List[str]:
             verbs.append(verb)
     return verbs
 
+
+# --------------------------------------------------------------------------- #
+# The Desktop story card
+# --------------------------------------------------------------------------- #
+
+# Where a story was found, for the card's byline: (name, what the source's
+# popularity signal counts, the source's own host).
+_VIA = {
+    "hackernews": ("Hacker News", "points", "news.ycombinator.com"),
+    "lobsters": ("Lobsters", "points", "lobste.rs"),
+    "reddit": ("Reddit", "upvotes", "reddit.com"),
+    "devto": ("DEV", "reactions", "dev.to"),
+}
+
+
+def _age(secs: int) -> str:
+    if secs < 3600:
+        return f"{max(1, secs // 60)}m ago"
+    if secs < 48 * 3600:
+        return f"{secs // 3600}h ago"
+    return f"{secs // 86400}d ago"
+
+
+def _byline(story: Story, now: int) -> str:
+    """``github.com · Hacker News · 412 points · 3h ago``, as far as known."""
+    parts: List[str] = []
+    try:
+        host = (urlsplit(story.url).hostname or "").lower()
+    except ValueError:
+        host = ""
+    host = host[4:] if host.startswith("www.") else host
+    via = _VIA.get(story.source)
+    if host and not (via and host.endswith(via[2])):
+        parts.append(host)
+    if via:
+        name, counts, _ = via
+        parts.append(f"r/{story.topic}" if story.source == "reddit" and story.topic else name)
+        if story.signal > 0:
+            parts.append(f"{int(story.signal):,} {counts}")
+    if story.published_ts:
+        parts.append(_age(max(0, now - story.published_ts)))
+    return " · ".join(parts)
+
+
+def story_card(cfg: Config, headline: str) -> Optional[Dict[str, str]]:
+    """What the Desktop mod shows when its headline is clicked: the cached
+    story behind ``headline`` (a spinner verb as installed), or None.
+
+    Matched the way ``build_display`` made the verb, so a headline cut to the
+    width budget still finds its story; the best-ranked story wins a tie.
+    """
+    wanted = headline.strip()
+    for story in storage.load_stories(cfg.cache_dir):   # saved best-ranked first
+        if story.ai_headline and build_display(story, cfg) == wanted:
+            return {
+                "headline": wanted,
+                "title": story.title,
+                "summary": story.summary,
+                "url": story.url,
+                "byline": _byline(story, now_ts()),
+            }
+    return None
+
+
+# --------------------------------------------------------------------------- #
+# Settings
+# --------------------------------------------------------------------------- #
 
 def _is_legacy_hook(entry: Any) -> bool:
     cmd = entry.get("command", "") if isinstance(entry, dict) else ""

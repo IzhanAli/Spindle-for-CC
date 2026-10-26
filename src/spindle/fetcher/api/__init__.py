@@ -1,7 +1,8 @@
-"""API backend: NewsAPI + GNews (both keyed) + DEV.to + Hacker News (keyless).
+"""API backend: NewsAPI + GNews (both keyed) + DEV.to + Hacker News + Lobsters
+(keyless).
 
 Keyed sources without a key are skipped (with a log line), so this mode still
-works on DEV.to + Hacker News alone.
+works on DEV.to + Hacker News + Lobsters alone.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from ..common import FetchContext, Logger, safe
 
 def collect(ctx: FetchContext, cfg, log: Logger) -> List[RawItem]:
     from . import newsapi, gnews, devto
-    from .. import hn                    # shared, keyless HN provider
+    from .. import hn, lobsters          # shared, keyless aggregators
 
     items: List[RawItem] = []
     if cfg.newsapi.get("enabled", True):
@@ -25,4 +26,6 @@ def collect(ctx: FetchContext, cfg, log: Logger) -> List[RawItem]:
         items += safe("devto", devto.fetch, ctx, cfg, log)
     if cfg.hackernews.get("enabled", True):
         items += safe("hackernews", hn.fetch, ctx, cfg, log)
+    if cfg.lobsters.get("enabled", True):
+        items += safe("lobsters", lobsters.fetch, ctx, cfg, log)
     return items

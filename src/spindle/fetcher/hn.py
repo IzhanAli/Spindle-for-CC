@@ -37,5 +37,6 @@ def fetch(ctx, cfg, log) -> List[RawItem]:
             signal=float(points),
             published_ts=hit.get("created_at_i"),
             prefix_hint=prefix,
+            summary=hit.get("story_text"),      # Ask/Show HN text; links have none
         ))
     return items

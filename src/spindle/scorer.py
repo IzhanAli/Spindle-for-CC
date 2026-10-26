@@ -12,7 +12,7 @@ agent judges every story and tags the actual noise ``OFF``.
 The rest are ranked. Final score = weighted sum of normalized components:
 
     freshness      exponential decay on age (half-life ~18h)
-    signal         log-scaled popularity (HN points / Reddit score)
+    signal         log-scaled popularity (HN / Lobsters points, Reddit score)
     dev_relevance  keyword hits against mobile + programming vocabulary
     ai_relevance   keyword hits against AI/LLM vocabulary
     release        bonus for SDK/framework release & changelog posts

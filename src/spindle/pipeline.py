@@ -1,7 +1,8 @@
 """Orchestration: the ``refresh``, ``clean``, ``sync`` and ``session-start``
 workflows.
 
-    refresh        Fetch → Normalize → Score → Deduplicate → Clean → Persist.
+    refresh        Fetch → Normalize → Score → Deduplicate → Summarize pages →
+                   Clean → Persist.
     clean          Re-run headline cleaning on stories still waiting for it.
     sync           Read cache → select next pool → write settings. Local only.
     session-start  sync (instant) + spawn a *detached* refresh if the cache is
@@ -18,7 +19,7 @@ import os
 import subprocess
 from typing import Any, Callable, Dict, List, Optional
 
-from . import integration, storage, summarizer
+from . import integration, pages, storage, summarizer
 from .config import Config
 from .deduplicator import deduplicate
 from .fetcher import collect
@@ -32,6 +33,7 @@ Logger = Callable[[str], None]
 LOCK_TTL = 600  # seconds; a lock older than this is considered stale (covers
                 # feed fetches plus a few headline-agent calls and retries)
 CLEAN_RETRY_SECS = 300  # min gap between session-start retries of held-back stories
+META_VERSION = 2        # 2: stories keep their feed's summary
 
 
 # --------------------------------------------------------------------------- #
@@ -111,6 +113,12 @@ def refresh(cfg: Config, log: Logger = lambda _m: None) -> Dict[str, Any]:
         now = now_ts()
         meta = storage.load_meta(cfg.cache_dir)
         existing = storage.load_stories(cfg.cache_dir)
+        if int(meta.get("version", 1)) < META_VERSION:
+            # Stories cached before summaries were kept have none, and a feed
+            # that answers 304 would never resend them: fetch every feed in
+            # full once, and the merge below fills them in.
+            meta["feeds"] = {}
+            meta["version"] = META_VERSION
 
         raw = collect(cfg, meta, log)
         fetched = normalize(raw, cfg)
@@ -134,6 +142,9 @@ def refresh(cfg: Config, log: Logger = lambda _m: None) -> Dict[str, Any]:
             if not keep.ai_headline:
                 keep.ai_headline = other.ai_headline
                 keep.tag = other.tag
+            if not keep.summary:
+                keep.summary = other.summary
+            keep.page_checked = keep.page_checked or other.page_checked
             merged[s.id] = keep
         stories = list(merged.values())
 
@@ -153,6 +164,11 @@ def refresh(cfg: Config, log: Logger = lambda _m: None) -> Dict[str, Any]:
         stories = deduplicate(stories)
         stories.sort(key=lambda s: s.score, reverse=True)
         stories = stories[: cfg.max_stories]
+
+        # Stories whose feed gave no summary get their article page's own
+        # description, each page read once in a story's life.
+        if cfg.page_summaries:
+            pages.fill_summaries(stories, cfg, log)
 
         # Headline cleaning pass (mandatory for display). Only the kept, ranked
         # stories are cleaned, and only those still missing a label — so usage
@@ -312,6 +328,7 @@ def status_info(cfg: Config) -> Dict[str, Any]:
         "settings_path": cfg.claude_settings_path,
         "story_count": len(stories),
         "cleaned_count": sum(1 for s in stories if s.ai_headline),
+        "summary_count": sum(1 for s in stories if s.summary),
         "last_refresh_ts": last,
         "age_secs": (now_ts() - last) if last else None,
         "stale": is_stale(cfg, meta),

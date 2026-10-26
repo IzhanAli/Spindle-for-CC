@@ -13,7 +13,8 @@ Help the user configure spindle. The config lives at `~/.config/spindle/config.t
 2. Read the config file, and `${CLAUDE_PLUGIN_ROOT}/config.example.toml` for what each key means.
 3. Apply what the user asked for: $ARGUMENTS
    If they didn't say, briefly show the current `mode`, `topics`, and feed list and ask what they'd like to change.
-   - `topics` rank stories. `[[rss]]` entries and `[reddit].subreddits` are the scraper-mode sources. `mode = "api"` switches to NewsAPI + GNews + DEV.to + Hacker News.
+   - `topics` rank stories. `[[rss]]` entries and `[reddit].subreddits` are the scraper-mode sources; `[hackernews]` and `[lobsters]` feed both modes. `mode = "api"` switches to NewsAPI + GNews + DEV.to + Hacker News + Lobsters.
+   - `page_summaries = false` stops spindle reading article pages for the summaries the Desktop story pane shows, for stories whose feed gave none; it then sticks to the feeds.
    - Keep API keys out of the config file: suggest `NEWSAPI_KEY` / `GNEWS_KEY` in `~/.config/spindle/.env` instead.
    - `[ai]` tunes the headline-writer agent: `model` (empty means haiku), `max_words`, `batch_size`, `timeout_secs`, `claude_bin`. Cleaning can't be turned off — only cleaned headlines are ever shown.
    - Only add feed URLs you're confident are real RSS/Atom feeds; spindle skips dead feeds silently, so a wrong URL won't warn.

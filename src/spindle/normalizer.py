@@ -1,9 +1,9 @@
 """Turn raw source items into clean, uniform ``Story`` records.
 
-Responsibilities: sanitize the title, canonicalize the URL, assign a stable id
-and a display prefix, and stamp fetch time, and drop items that aren't news at
-all (package-registry release pages). Scoring and deduplication happen in later
-stages.
+Responsibilities: sanitize the title, trim the feed's description to a short
+summary, canonicalize the URL, assign a stable id and a display prefix, stamp
+fetch time, and drop items that aren't news at all (package-registry release
+pages). Scoring and deduplication happen in later stages.
 """
 
 from __future__ import annotations
@@ -12,10 +12,11 @@ from typing import List
 from urllib.parse import urlsplit
 
 from .model import RawItem, Story
-from .util import normalize_url, now_ts, sanitize_text, story_id
+from .util import excerpt, normalize_url, now_ts, sanitize_text, story_id
 
 _SOURCE_PREFIX = {
     "hackernews": "HN",
+    "lobsters": "LOB",
     "reddit": "RDT",
     "rss": "DEV",
     "newsapi": "NEWS",
@@ -80,5 +81,6 @@ def normalize(raw_items: List[RawItem], cfg) -> List[Story]:
             signal=float(r.signal or 0.0),
             kind=r.kind,
             topic=r.topic_hint,
+            summary=excerpt(r.summary, title),
         ))
     return stories
